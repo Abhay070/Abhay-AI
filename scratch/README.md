@@ -41,6 +41,41 @@ baseline; anything below it is learned structure.
 | 1.6 | plausible sentences, correct format, no meaning |
 | < 1.5 | check for overfitting — is validation loss still falling too? |
 
+### A real run, for calibration
+
+`--preset small` on a 4-core CPU, 3000 iterations, ~16 minutes:
+
+```
+iter     0/3000  train 4.1847  val 4.1811     <- knows nothing
+iter  1000/3000  train 1.8307  val 1.9540
+iter  2000/3000  train 1.5631  val 1.7383
+iter  3000/3000  train 1.4820  val 1.6815
+```
+
+Train and validation loss fell together the whole way, which is what healthy
+training looks like — no overfitting. Output at 1.68, from `KING RICHARD:`:
+
+```
+KING RICHARD:
+Gainst then else hath power'd; thereof I shall be:
+Were thou ask in crept my bloody,
+For are that I say that my should friat,
+Will a dear than the murder of should, nare,
+No, lord father. We prince be from approves:
+
+HORTENSIO:
+A with meet of your voices I carrance at despitions.
+```
+
+Look at what 795,904 parameters learned from raw text, with nobody telling it
+any of it: English spelling, apostrophes, iambic-ish line lengths, the
+`SPEAKER:` convention of a play, blank lines between speeches, and the names of
+characters who appear in the corpus. It also produced "friat", "carrance" and
+"despitions", and the sentences mean nothing.
+
+That is the whole lesson in one screen. Form is learnable from very little.
+Meaning is what costs a data center.
+
 If train loss keeps dropping while validation loss turns upward, the model has
 started memorizing the corpus rather than learning its patterns. Stop there, or
 get more data.
