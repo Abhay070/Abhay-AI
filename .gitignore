@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Secrets — never commit your API keys
+.env
+*.env
+!.env.example
+
+# Trained model weights and checkpoints (too big for git)
+*.pt
+*.pth
+*.bin
+*.safetensors
+checkpoints/
+out/
+runs/
+adapters/
+
+# Downloaded datasets
+scratch/data/*.txt
+!scratch/data/sample.txt
+scratch/data/*.bin
+
+# OS noise
+.DS_Store
+Thumbs.db

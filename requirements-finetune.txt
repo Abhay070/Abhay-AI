@@ -1,0 +1,9 @@
+# LoRA fine-tuning. Needs a GPU -- a free Colab T4 is enough.
+#   pip install -r requirements-finetune.txt
+torch>=2.0
+transformers>=4.40
+datasets>=2.18
+peft>=0.10
+accelerate>=0.29
+bitsandbytes>=0.43   # 4-bit quantization, so a 7B model fits in 16 GB
+trl>=0.8

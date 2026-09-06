@@ -1,0 +1,7 @@
+# The chat app. No model libraries needed -- the brain lives behind an HTTP call
+# (or in scratch/, if you point PROVIDER at your own model).
+#   pip install -r requirements-app.txt
+fastapi>=0.110
+uvicorn>=0.27
+httpx>=0.27
+pydantic>=2.0

@@ -1,0 +1,6 @@
+# Training your own model from scratch. CPU is fine.
+#   pip install -r requirements-scratch.txt
+#
+# For a CPU-only install (much smaller download, ~200 MB instead of ~2.5 GB):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.0
