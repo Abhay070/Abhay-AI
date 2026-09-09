@@ -1,0 +1,38 @@
+{
+  "name": "Praxis",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+
+  // Installed once when the Codespace is created.
+  "postCreateCommand": "pip install --user -r requirements.txt",
+
+  // Started automatically every time the Codespace opens.
+  "postAttachCommand": "python server.py",
+
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Praxis",
+      "onAutoForward": "openBrowser"
+    }
+  },
+
+  // Inside a container the server must listen on all interfaces, or the port
+  // forwarder cannot reach it. This is only safe because Codespaces forwards
+  // ports PRIVATELY by default — the URL requires your GitHub login.
+  //
+  // If you ever set a port's visibility to Public in the Ports panel, you have
+  // published an assistant with no login: anyone with the link can read your
+  // conversations, edit your memory, and spend your API quota. Don't.
+  "containerEnv": {
+    "HOST": "0.0.0.0",
+    "PORT": "8000",
+    "PROVIDER": "demo"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"],
+      "settings": { "python.defaultInterpreterPath": "/usr/local/bin/python" }
+    }
+  }
+}
