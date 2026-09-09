@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Praxis — your own AI</title>
+<meta name="description" content="A personal AI that thinks, challenges, builds, verifies and executes. Ten operating modes, persistent memory, real tools. Runs free and offline.">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23f0a24b'/><text y='72' x='50' text-anchor='middle' font-size='62' font-family='monospace' font-weight='bold' fill='%2317130c'>P</text></svg>">
+<style>
+  body { height: auto; overflow-x: hidden; }
+
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 28px; border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px);
+  }
+  .nav .brand-mark { width: 28px; height: 28px; font-size: 15px; }
+  .nav-name { font-weight: 660; letter-spacing: -0.02em; font-size: 16px; }
+  .nav-links { display: flex; gap: 4px; margin-left: 22px; }
+  .nav-links a {
+    color: var(--text-dim); font-size: 13.5px; padding: 6px 11px;
+    border-radius: 7px;
+  }
+  .nav-links a:hover { color: var(--text); background: var(--bg-hover); }
+  @media (max-width: 720px) { .nav-links { display: none; } }
+
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 28px; }
+  section { padding: 88px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+
+  .eyebrow {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--accent); font-weight: 680; margin-bottom: 16px;
+  }
+  h1 {
+    font-size: clamp(38px, 7vw, 66px); line-height: 1.02;
+    letter-spacing: -0.038em; margin: 0 0 22px; font-weight: 680;
+  }
+  h2 {
+    font-size: clamp(25px, 3.6vw, 34px); letter-spacing: -0.028em;
+    margin: 0 0 14px; font-weight: 660;
+  }
+  .lede { font-size: 18px; color: var(--text-dim); max-width: 620px; line-height: 1.62; }
+
+  /* hero */
+  .hero { padding: 92px 0 76px; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; top: -320px; left: 50%;
+    transform: translateX(-50%);
+    width: 940px; height: 640px; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(240,162,75,.15), transparent 66%);
+  }
+  .hero-inner { position: relative; }
+  .hero h1 span { color: var(--accent); }
+  .hero-cta { display: flex; gap: 11px; margin-top: 34px; flex-wrap: wrap; }
+  .btn-lg { padding: 12px 24px; font-size: 15px; border-radius: 11px; }
+
+  .verbs {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 46px;
+    padding-top: 26px; border-top: 1px solid var(--border);
+  }
+  .verb {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .06em;
+    color: var(--text-faint); text-transform: uppercase;
+    padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+  }
+  .verb:nth-child(odd) { color: var(--accent); border-color: var(--accent-line); }
+
+  /* grids */
+  .grid { display: grid; gap: 14px; margin-top: 36px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 820px) { .g3 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 620px) { .g2, .g3 { grid-template-columns: 1fr; } }
+
+  .card {
+    padding: 20px 21px; border: 1px solid var(--border);
+    border-radius: var(--radius-lg); background: var(--bg-raised);
+    transition: border-color .16s, transform .16s;
+  }
+  .card:hover { border-color: var(--accent-line); transform: translateY(-2px); }
+  .card-icon { color: var(--accent); font-size: 19px; margin-bottom: 11px; }
+  .card h3 { margin: 0 0 7px; font-size: 15.5px; font-weight: 620; letter-spacing: -0.01em; }
+  .card p { margin: 0; font-size: 13.6px; color: var(--text-dim); line-height: 1.58; }
+  .card code {
+    font-family: var(--mono); font-size: .88em; background: var(--bg-inset);
+    padding: .1em .4em; border-radius: 4px; border: 1px solid var(--border);
+  }
+
+  /* mode strip */
+  .modes { display: flex; flex-direction: column; gap: 1px; margin-top: 34px;
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    overflow: hidden; background: var(--border); }
+  .mode-row {
+    display: flex; align-items: baseline; gap: 15px;
+    padding: 15px 20px; background: var(--bg-raised);
+    transition: background .13s;
+  }
+  .mode-row:hover { background: var(--bg-hover); }
+  .mode-row .ic {
+    color: var(--accent); font-size: 15px; width: 20px; flex: none; text-align: center;
+  }
+  .mode-row .nm { font-weight: 610; font-size: 14.5px; width: 132px; flex: none; }
+  .mode-row .ds { color: var(--text-dim); font-size: 13.4px; line-height: 1.5; }
+  @media (max-width: 620px) {
+    .mode-row { flex-wrap: wrap; gap: 6px 12px; }
+    .mode-row .nm { width: auto; }
+    .mode-row .ds { width: 100%; padding-left: 35px; }
+  }
+
+  /* terminal */
+  .term {
+    margin-top: 34px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: var(--bg-inset); overflow: hidden; box-shadow: var(--shadow);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 15px; border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+  .term-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong); }
+  .term-title {
+    margin-left: 8px; font-size: 11.5px; color: var(--text-faint);
+    font-family: var(--mono);
+  }
+  .term pre {
+    margin: 0; padding: 18px 20px; font-family: var(--mono);
+    font-size: 12.8px; line-height: 1.75; overflow-x: auto; color: var(--text-dim);
+  }
+  .term .c { color: var(--accent); }
+  .term .g { color: var(--ok); }
+  .term .d { color: var(--text-faint); }
+
+  /* comparison */
+  table.cmp { width: 100%; border-collapse: collapse; margin-top: 32px; font-size: 14px; }
+  table.cmp th, table.cmp td {
+    padding: 13px 15px; text-align: left; border-bottom: 1px solid var(--border);
+  }
+  table.cmp th {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--text-faint); font-weight: 640;
+  }
+  table.cmp td:first-child { font-weight: 570; }
+  table.cmp .yes { color: var(--ok); }
+  table.cmp .no  { color: var(--text-faint); }
+  .cost { color: var(--accent); font-family: var(--mono); font-size: 13px; }
+
+  footer {
+    padding: 44px 0 60px; color: var(--text-faint); font-size: 13px;
+  }
+  footer a { color: var(--text-dim); }
+  .foot-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="brand-mark">P</div>
+  <span class="nav-name">Praxis</span>
+  <div class="nav-links">
+    <a href="#what">What it is</a>
+    <a href="#modes">Modes</a>
+    <a href="#tools">Tools</a>
+    <a href="#memory">Memory</a>
+    <a href="#start">Get started</a>
+  </div>
+  <div class="spacer"></div>
+  <a class="btn btn-primary" href="/chat">Open Praxis →</a>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-inner">
+    <div class="eyebrow">praxis · the process by which theory becomes action</div>
+    <h1>Don't just answer.<br><span>Build.</span></h1>
+    <p class="lede">
+      A personal AI that argues with your ideas instead of flattering them,
+      remembers what matters, uses real tools, and ends with the next move
+      rather than a summary. Runs free, offline, on hardware you already own.
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary btn-lg" href="/chat">Open Praxis</a>
+      <a class="btn btn-lg" href="#start">How to run it</a>
+    </div>
+    <div class="verbs">
+      <span class="verb">Think</span>
+      <span class="verb">Challenge</span>
+      <span class="verb">Build</span>
+      <span class="verb">Verify</span>
+      <span class="verb">Execute</span>
+    </div>
+  </div>
+</header>
+
+<section id="what">
+  <div class="wrap">
+    <div class="eyebrow">What it is</div>
+    <h2>An assistant with a spine</h2>
+    <p class="lede">
+      Most chat assistants optimise for agreeableness. Praxis is built on a
+      different instruction: respect the user, interrogate the idea. If your
+      plan has a hole in it, the first sentence says so.
+    </p>
+
+    <div class="grid g3">
+      <div class="card">
+        <div class="card-icon">⚔</div>
+        <h3>It pushes back</h3>
+        <p>Agreement it did not actually reach is a failure, not politeness.
+           Weak assumptions get named. Better approaches get argued for.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">◆</div>
+        <h3>It remembers</h3>
+        <p>Durable facts about you persist across every conversation — and
+           every one is visible, editable and deletable. Memory you cannot
+           audit is memory you cannot trust.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚒</div>
+        <h3>It acts</h3>
+        <p>Nine tools: exact arithmetic, web search, page fetching, code
+           execution, file reading, memory writes. It computes rather than
+           predicting the answer.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">◈</div>
+        <h3>Ten modes</h3>
+        <p>Founder mode interrogates. Teacher mode explains. Direct mode
+           removes every word that isn't the answer. One click, no reload.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⌂</div>
+        <h3>It's yours</h3>
+        <p>Runs on your machine against a local model. No account, no
+           telemetry, no network. Your conversations sit in a SQLite file
+           you can back up by copying it.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">◉</div>
+        <h3>Nothing hidden</h3>
+        <p>Read the exact system prompt it was given, watch every tool call
+           as it runs, see which memories entered the context window.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="modes">
+  <div class="wrap">
+    <div class="eyebrow">Operating modes</div>
+    <h2>Ten ways to think</h2>
+    <p class="lede">
+      A mode is a behavioural overlay, not a different model — so switching is
+      instant and costs nothing. The core identity holds throughout; the mode
+      sharpens it for the work in front of you.
+    </p>
+
+    <div class="modes">
+      <div class="mode-row"><span class="ic">◈</span><span class="nm">Standard</span><span class="ds">Balanced. Adapts to whatever you bring.</span></div>
+      <div class="mode-row"><span class="ic">→</span><span class="nm">Direct</span><span class="ds">Maximum signal, no cushioning. Under 150 words, conclusion first, uncomfortable truths included.</span></div>
+      <div class="mode-row"><span class="ic">▲</span><span class="nm">Founder</span><span class="ds">Commercial pressure-testing. Who needs it, why now, what's the moat, what kills it, and the cheapest experiment that settles it this week.</span></div>
+      <div class="mode-row"><span class="ic">⊗</span><span class="nm">Reality Check</span><span class="ds">Structured teardown ending in a verdict: pursue, pursue with changes, test first, or drop it.</span></div>
+      <div class="mode-row"><span class="ic">⚒</span><span class="nm">Build</span><span class="ds">Idea to executable project. Real code, real schemas, one recommended stack defended — not four options and a retreat.</span></div>
+      <div class="mode-row"><span class="ic">◇</span><span class="nm">Research</span><span class="ds">Searches before answering. Names sources, checks dates, surfaces disagreement, never invents a citation.</span></div>
+      <div class="mode-row"><span class="ic">◎</span><span class="nm">Teacher</span><span class="ds">Builds understanding from what you already know. Concrete example before the general rule, always.</span></div>
+      <div class="mode-row"><span class="ic">?</span><span class="nm">Socratic</span><span class="ds">Refuses to hand you the answer. Asks the one question that exposes the gap in your reasoning.</span></div>
+      <div class="mode-row"><span class="ic">✓</span><span class="nm">Exam</span><span class="ds">Tests you, marks honestly, adapts difficulty, and reports what's solid and what's shaky.</span></div>
+      <div class="mode-row"><span class="ic">▤</span><span class="nm">Executive Brief</span><span class="ds">Situation, problem, options, recommendation, next action. Under 350 words, decision-shaped.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="wrap">
+    <div class="eyebrow">Tools</div>
+    <h2>It computes instead of guessing</h2>
+    <p class="lede">
+      Language models are unreliable at arithmetic — not because they're bad at
+      maths, but because they're predicting plausible digits rather than
+      calculating. Praxis calls a tool instead, and shows you every call as it
+      happens.
+    </p>
+
+    <div class="grid g3">
+      <div class="card"><div class="card-icon">∑</div><h3>calculate</h3><p>Exact arithmetic via a parsed AST — never <code>eval()</code>, which on model output is a remote-code-execution hole.</p></div>
+      <div class="card"><div class="card-icon">⌕</div><h3>web_search</h3><p>Four interchangeable backends: DuckDuckGo free, Brave, Tavily, or your own SearXNG.</p></div>
+      <div class="card"><div class="card-icon">⇲</div><h3>web_fetch</h3><p>Reads a page as clean text. Scripts and styling stripped, truncated sensibly.</p></div>
+      <div class="card"><div class="card-icon">▶</div><h3>run_python</h3><p>Real execution in a subprocess with a hard timeout. Off by default, and the docs say plainly what the isolation does and doesn't give you.</p></div>
+      <div class="card"><div class="card-icon">▤</div><h3>read_file</h3><p>Full text of anything you upload or drag in. Code, CSV, Markdown, PDF.</p></div>
+      <div class="card"><div class="card-icon">◆</div><h3>remember · recall · forget</h3><p>The model decides what is worth keeping. You decide what it keeps.</p></div>
+    </div>
+
+    <div class="term">
+      <div class="term-bar">
+        <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        <span class="term-title">a turn, as it actually runs</span>
+      </div>
+<pre><span class="d">you ›</span> how many pixels in a 4K frame, and is that 4× 1080p?
+
+  <span class="c">∑ calculate</span>  3840*2160                        <span class="g">✓</span>
+  <span class="c">∑ calculate</span>  (3840*2160)/(1920*1080)          <span class="g">✓</span>
+
+<span class="d">praxis ›</span> 8,294,400 pixels. And yes — exactly 4×, since
+4K doubles both dimensions rather than one.
+
+<span class="d">  2.1s · 2 tool calls</span></pre>
+    </div>
+  </div>
+</section>
+
+<section id="memory">
+  <div class="wrap">
+    <div class="eyebrow">Memory</div>
+    <h2>It knows you, and you can see exactly what it knows</h2>
+    <p class="lede">
+      Praxis stores keyed facts, not transcripts. "Prefers Rust for systems work"
+      is memory. "Asked about lifetimes on Tuesday" is not. Every fact records
+      where it came from and how often it has been used.
+    </p>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-icon">◆</div>
+        <h3>Six categories</h3>
+        <p>fact · preference · project · goal · decision · skill. Small on purpose
+           — a taxonomy nobody can remember is one nobody uses correctly.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">◉</div>
+        <h3>Explainable recall</h3>
+        <p>Relevance is keyword overlap plus usage, not embeddings. At personal
+           scale it's about as accurate and has one decisive advantage: you can
+           tell why a memory surfaced.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">✎</div>
+        <h3>Fully editable</h3>
+        <p>Open the memory panel, edit any fact in place, delete one or all.
+           A current instruction always overrides a remembered preference.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⌂</div>
+        <h3>Local, always</h3>
+        <p>One SQLite file on your disk. Nothing is uploaded, nothing is shared,
+           nothing leaves the machine unless you point it at a hosted model.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="eyebrow">Get started</div>
+    <h2>Running in about two minutes</h2>
+    <p class="lede">
+      Clone it and it works immediately on the demo backend — no key, no model,
+      no account. Then point it at something intelligent.
+    </p>
+
+    <div class="term">
+      <div class="term-bar">
+        <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        <span class="term-title">terminal</span>
+      </div>
+<pre><span class="d"># 1. install and run — works out of the box</span>
+pip install -r requirements.txt
+python server.py                  <span class="d"># → localhost:8000</span>
+
+<span class="d"># 2. give it a real brain (free, local, offline)</span>
+<span class="c">curl -fsSL https://ollama.com/install.sh | sh</span>
+<span class="c">ollama pull llama3.2</span>
+echo "PROVIDER=ollama" &gt; .env
+
+<span class="d"># 3. restart. that's it.</span>
+python server.py</pre>
+    </div>
+
+    <table class="cmp">
+      <thead>
+        <tr><th>Backend</th><th>Cost</th><th>Offline</th><th>Setup</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Demo</td><td class="cost">free</td><td class="yes">yes</td><td>none — it's already running</td></tr>
+        <tr><td>Ollama</td><td class="cost">free</td><td class="yes">yes</td><td>install, then <code>ollama pull llama3.2</code></td></tr>
+        <tr><td>Groq</td><td class="cost">free tier</td><td class="no">no</td><td>free key, no card</td></tr>
+        <tr><td>Gemini</td><td class="cost">free tier</td><td class="no">no</td><td>free key</td></tr>
+        <tr><td>OpenAI-compatible</td><td class="cost">varies</td><td class="no">depends</td><td>LM Studio, vLLM, OpenRouter, Together…</td></tr>
+        <tr><td>Claude</td><td class="cost">paid</td><td class="no">no</td><td>strongest option if you want one</td></tr>
+        <tr><td>Your own model</td><td class="cost">free</td><td class="yes">yes</td><td><code>python scratch/train.py</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="grid g2" style="margin-top:34px">
+      <div class="card">
+        <div class="card-icon">⌘</div>
+        <h3>Built for keyboards</h3>
+        <p><code>⌘K</code> command palette · <code>⌘N</code> new chat ·
+           <code>⌘M</code> memory · <code>⌘,</code> settings.
+           Drag a file anywhere to attach it.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">↓</div>
+        <h3>Your data leaves easily</h3>
+        <p>Every conversation exports to Markdown in one click. The database is
+           a single file. Nothing here is designed to trap you.</p>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <a class="btn btn-primary btn-lg" href="/chat">Open Praxis →</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <div class="brand-mark" style="width:22px;height:22px;font-size:12px">P</div>
+      <strong style="color:var(--text-dim)">Praxis</strong>
+      <span>Think · Challenge · Build · Verify · Execute</span>
+      <div class="spacer"></div>
+      <a href="/chat">Open</a>
+      <a href="#what">What it is</a>
+      <a href="#start">Get started</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

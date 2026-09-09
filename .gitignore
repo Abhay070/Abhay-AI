@@ -29,3 +29,6 @@ scratch/data/*.bin
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Praxis runtime data — conversations, memory, uploads
+data/

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Praxis</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23f0a24b'/><text y='72' x='50' text-anchor='middle' font-size='62' font-family='monospace' font-weight='bold' fill='%2317130c'>P</text></svg>">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand">
+        <div class="brand-mark">P</div>
+        <div>
+          <div class="brand-name" id="brandName">Praxis</div>
+          <div class="brand-ver" id="brandVer">v1.0.0</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="newChat" style="width:100%;justify-content:center">
+        <span>+</span> New chat
+      </button>
+      <div class="search-wrap">
+        <input id="search" placeholder="Search conversations…" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="conv-list" id="convList"></div>
+
+    <div class="sidebar-foot">
+      <button class="provider-pill" id="providerPill" title="Provider status">
+        <span class="dot" id="providerDot"></span>
+        <span id="providerText">connecting…</span>
+      </button>
+      <button class="btn-icon" id="openMemory" title="Memory">◆</button>
+      <button class="btn-icon" id="openSettings" title="Settings">⚙</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="btn-icon" id="toggleSidebar" title="Toggle sidebar (⌘\)">☰</button>
+
+      <div class="mode-picker">
+        <button class="mode-btn" id="modeBtn">
+          <span class="mode-icon" id="modeIcon">◈</span>
+          <span id="modeLabel">Standard</span>
+          <span style="color:var(--text-faint);font-size:10px">▾</span>
+        </button>
+        <div class="mode-menu hidden" id="modeMenu"></div>
+      </div>
+
+      <div class="topbar-title" id="convTitle"></div>
+      <div class="spacer"></div>
+      <button class="btn-icon" id="openPalette" title="Commands (⌘K)">⌘K</button>
+      <button class="btn-icon" id="exportChat" title="Export as Markdown">↓</button>
+      <button class="btn-icon" id="toggleTheme" title="Theme">◐</button>
+    </header>
+
+    <div class="thread" id="thread">
+      <div class="thread-inner" id="threadInner"></div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Ask anything. ⌘K for commands." autofocus></textarea>
+        <div class="attachments hidden" id="attachments"></div>
+        <div class="composer-bar">
+          <button class="btn-icon" id="attachBtn" title="Attach a file">⊕</button>
+          <input type="file" id="fileInput" class="hidden">
+          <span class="chip" id="toolChip" title="Tools available"></span>
+          <div class="spacer"></div>
+          <button class="btn-icon hidden" id="stopBtn" title="Stop">■</button>
+          <button class="send-btn" id="sendBtn" title="Send (Enter)">↑</button>
+        </div>
+      </div>
+      <div class="composer-hint" id="hint">
+        Enter to send · Shift+Enter for a new line · ⌘K for commands
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

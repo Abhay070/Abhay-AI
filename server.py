@@ -1,0 +1,338 @@
+"""
+Praxis — API server.
+
+Run:
+    pip install -r requirements.txt
+    python server.py          →  http://localhost:8000
+
+Endpoints
+    GET  /                      landing page
+    GET  /chat                  the app
+    GET  /api/bootstrap         everything the UI needs on load
+    GET  /api/health            provider status
+    POST /api/chat              stream a reply (SSE)
+    GET/POST/PATCH/DELETE  /api/conversations[/id]
+    GET  /api/conversations/:id/export     markdown export
+    GET/POST/PATCH/DELETE  /api/memories[/id]
+    POST /api/upload            attach a file
+    GET  /api/prompt            inspect the exact system prompt being sent
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+from fastapi import Body, FastAPI, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from praxis import __version__, modes as modes_mod, providers, tools as toolkit
+from praxis.agent import Agent
+from praxis.config import BRAND, settings
+from praxis.store import CATEGORIES, Store
+from praxis.tools import files as files_tool, memory as memory_tool
+
+settings.ensure_dirs()
+store = Store(settings.db_path)
+agent = Agent(store, settings)
+
+# Tools that need storage get it here, so tool modules never import the app.
+memory_tool.bind(store)
+files_tool.bind(store)
+
+WEB = Path(__file__).parent / "web"
+
+app = FastAPI(title=BRAND.name, version=__version__)
+app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
+
+
+# -- models -----------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    conversation_id: str | None = None
+    message: str
+    mode: str = settings.default_mode
+    provider: str | None = None
+    regenerate_from: str | None = None
+
+
+class ConversationPatch(BaseModel):
+    title: str | None = None
+    mode: str | None = None
+    pinned: bool | None = None
+    archived: bool | None = None
+
+
+class MemoryIn(BaseModel):
+    content: str
+    category: str = "fact"
+
+
+# -- pages ------------------------------------------------------------------
+
+@app.get("/")
+async def landing() -> FileResponse:
+    return FileResponse(WEB / "index.html")
+
+
+@app.get("/chat")
+async def chat_page() -> FileResponse:
+    return FileResponse(WEB / "chat.html")
+
+
+# -- meta -------------------------------------------------------------------
+
+@app.get("/api/bootstrap")
+async def bootstrap() -> dict:
+    """One round trip for everything the UI needs at startup."""
+    provider, notes = await providers.resolve(settings.provider, settings.fallback_chain)
+    ok, detail = await provider.health()
+    active = toolkit.available(settings)
+    return {
+        "brand": {"name": BRAND.name, "tagline": BRAND.tagline,
+                  "owner": BRAND.owner, "version": __version__},
+        "provider": {"key": provider.name, "label": provider.label,
+                     "ok": ok, "detail": detail, "notes": notes,
+                     "requested": settings.provider},
+        "providers": providers.catalogue(),
+        "modes": modes_mod.catalogue(),
+        "tools": [{"name": t.name, "icon": t.icon, "dangerous": t.dangerous,
+                   "description": t.description} for t in active],
+        "features": {
+            "tools": settings.enable_tools, "memory": settings.enable_memory,
+            "web": settings.enable_web, "code": settings.enable_code_exec,
+        },
+        "memory_categories": list(CATEGORIES),
+        "conversations": store.list_conversations(limit=60),
+        "stats": store.stats(),
+        "user_name": settings.user_name,
+    }
+
+
+@app.get("/api/health")
+async def health() -> dict:
+    provider, notes = await providers.resolve(settings.provider, settings.fallback_chain)
+    ok, detail = await provider.health()
+    return {"provider": provider.name, "label": provider.label,
+            "ok": ok, "detail": detail, "notes": notes}
+
+
+@app.get("/api/prompt")
+async def inspect_prompt(mode: str = "standard") -> dict:
+    """Show the exact system prompt for a mode.
+
+    This is your own AI — you should be able to see precisely what it was told.
+    An assistant whose instructions you cannot read is one you are trusting on
+    faith."""
+    messages, memories, active = agent.compose([], mode, settings.user_name)
+    system = messages[0]["content"]
+    return {
+        "mode": mode,
+        "system_prompt": system,
+        "characters": len(system),
+        "estimated_tokens": len(system) // 4,
+        "memories_included": len(memories),
+        "tools_included": [t.name for t in active],
+    }
+
+
+# -- conversations ----------------------------------------------------------
+
+@app.get("/api/conversations")
+async def list_conversations(q: str = Query(""), archived: bool = False) -> list[dict]:
+    if q:
+        return store.search_conversations(q)
+    return store.list_conversations(archived=archived)
+
+
+@app.post("/api/conversations")
+async def create_conversation(mode: str = Body("standard", embed=True)) -> dict:
+    cid = store.create_conversation(mode=mode)
+    return store.get_conversation(cid)
+
+
+@app.get("/api/conversations/{cid}")
+async def get_conversation(cid: str) -> dict:
+    conversation = store.get_conversation(cid)
+    if not conversation:
+        raise HTTPException(404, "No such conversation")
+    conversation["messages"] = store.get_messages(cid)
+    return conversation
+
+
+@app.patch("/api/conversations/{cid}")
+async def patch_conversation(cid: str, patch: ConversationPatch) -> dict:
+    if not store.get_conversation(cid):
+        raise HTTPException(404, "No such conversation")
+    fields = {k: (int(v) if isinstance(v, bool) else v)
+              for k, v in patch.model_dump(exclude_none=True).items()}
+    store.update_conversation(cid, **fields)
+    return store.get_conversation(cid)
+
+
+@app.delete("/api/conversations/{cid}")
+async def delete_conversation(cid: str) -> dict:
+    store.delete_conversation(cid)
+    return {"deleted": cid}
+
+
+@app.get("/api/conversations/{cid}/export")
+async def export_conversation(cid: str) -> PlainTextResponse:
+    conversation = store.get_conversation(cid)
+    if not conversation:
+        raise HTTPException(404, "No such conversation")
+    lines = [f"# {conversation['title']}", "",
+             f"*Exported from {BRAND.name} · mode: {conversation['mode']}*", "", "---", ""]
+    for m in store.get_messages(cid):
+        who = {"user": BRAND.owner, "assistant": BRAND.name}.get(m["role"], m["role"])
+        lines += [f"### {who}", "", m["content"], ""]
+    return PlainTextResponse(
+        "\n".join(lines), media_type="text/markdown",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{conversation["title"][:40]}.md"'})
+
+
+# -- memory -----------------------------------------------------------------
+
+@app.get("/api/memories")
+async def list_memories(category: str = Query(""), q: str = Query("")) -> list[dict]:
+    if q:
+        return store.search_memories(q, limit=200)
+    return store.list_memories(category or None)
+
+
+@app.post("/api/memories")
+async def create_memory(item: MemoryIn) -> dict:
+    rid = store.add_memory(item.content, item.category)
+    if rid is None:
+        raise HTTPException(409, "Already remembered")
+    return {"id": rid, "content": item.content, "category": item.category}
+
+
+@app.patch("/api/memories/{rid}")
+async def patch_memory(rid: str, item: MemoryIn) -> dict:
+    store.update_memory(rid, item.content)
+    return {"id": rid, "content": item.content}
+
+
+@app.delete("/api/memories/{rid}")
+async def delete_memory(rid: str) -> dict:
+    store.delete_memory(rid)
+    return {"deleted": rid}
+
+
+@app.delete("/api/memories")
+async def clear_memories() -> dict:
+    return {"deleted": store.clear_memories()}
+
+
+# -- files ------------------------------------------------------------------
+
+TEXTUAL = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".tsv", ".html",
+           ".css", ".yml", ".yaml", ".toml", ".ini", ".sh", ".sql", ".xml",
+           ".rs", ".go", ".java", ".c", ".h", ".cpp", ".rb", ".php", ".log"}
+MAX_UPLOAD = 10 * 1024 * 1024
+
+
+@app.post("/api/upload")
+async def upload(file: UploadFile = File(...),
+                 conversation_id: str = Query("")) -> dict:
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD:
+        raise HTTPException(413, f"File too large (max {MAX_UPLOAD // 1024 // 1024} MB)")
+
+    name = Path(file.filename or "upload").name
+    suffix = Path(name).suffix.lower()
+    dest = settings.upload_dir / f"{abs(hash(name + str(len(raw)))):x}{suffix}"
+
+    if suffix in TEXTUAL or not suffix:
+        text = raw.decode("utf-8", errors="replace")
+    elif suffix == ".pdf":
+        text = _extract_pdf(raw)
+    else:
+        raise HTTPException(
+            415, f"Cannot read '{suffix}' files as text. Supported: "
+                 f"{', '.join(sorted(TEXTUAL))} and .pdf")
+
+    dest.write_text(text, encoding="utf-8")
+    excerpt = text[:1500]
+    fid = store.add_file(name, str(dest), file.content_type or "", len(raw),
+                         excerpt, conversation_id or None)
+    return {"id": fid, "filename": name, "size": len(raw),
+            "characters": len(text), "excerpt": excerpt,
+            "truncated": len(text) > len(excerpt)}
+
+
+def _extract_pdf(raw: bytes) -> str:
+    try:
+        import io
+
+        from pypdf import PdfReader
+    except ImportError:
+        raise HTTPException(
+            415, "PDF support needs pypdf. Install it with: pip install pypdf")
+    reader = PdfReader(io.BytesIO(raw))
+    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+# -- chat -------------------------------------------------------------------
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest) -> StreamingResponse:
+    cid = req.conversation_id
+    if not cid or not store.get_conversation(cid):
+        cid = store.create_conversation(agent.derive_title(req.message), req.mode)
+    else:
+        conversation = store.get_conversation(cid)
+        if conversation["title"] == "New conversation":
+            store.update_conversation(cid, title=agent.derive_title(req.message))
+        store.update_conversation(cid, mode=req.mode)
+
+    # Regenerating: drop the old branch before adding the new turn.
+    if req.regenerate_from:
+        store.truncate_after(cid, req.regenerate_from)
+        store.delete_message(req.regenerate_from)
+
+    if req.message.strip():
+        store.add_message(cid, "user", req.message)
+
+    history = store.get_messages(cid)
+    provider, notes = await providers.resolve(
+        req.provider or settings.provider,
+        () if req.provider else settings.fallback_chain)
+
+    async def event_stream():
+        # The conversation id must reach the client before anything else, or a
+        # brand-new chat cannot be updated in place.
+        yield f"data: {json.dumps({'type': 'conversation', 'data': {'id': cid}})}\n\n"
+        try:
+            async for event in agent.run(provider, cid, history, req.mode,
+                                         settings.user_name, notes):
+                yield f"data: {json.dumps({'type': event.type, 'data': event.data})}\n\n"
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            payload = {"type": "error", "data": {"message": f"{type(e).__name__}: {e}"}}
+            yield f"data: {json.dumps(payload)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                 "Connection": "keep-alive"})
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    print(f"\n  {BRAND.name} v{__version__} — {BRAND.tagline}")
+    print(f"  provider: {settings.provider}"
+          + (f" (fallback: {', '.join(settings.fallback_chain)})"
+             if settings.fallback_chain else ""))
+    print(f"  tools:    {len(toolkit.available(settings))} enabled")
+    print(f"  db:       {settings.db_path}")
+    print(f"\n  →  http://{settings.host}:{settings.port}\n")
+    uvicorn.run(app, host=settings.host, port=settings.port, log_level="warning")
