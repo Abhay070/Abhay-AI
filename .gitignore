@@ -32,3 +32,4 @@ Thumbs.db
 
 # Praxis runtime data — conversations, memory, uploads
 data/
+_site/

@@ -1,171 +1,146 @@
-# Abhay-AI
-
-Building my own AI — three stages, all of it free.
-
-This repo answers the question "can I build my own Claude/ChatGPT/Gemini?" by
-actually doing the parts that are possible and being straight about the part
-that is not.
-
----
-
-## The honest version first
-
-There are three different things people mean by "make my own AI," and they cost
-wildly different amounts:
-
-| What you mean | What it costs | Can you? |
-|---|---|---|
-| An AI **product** with its own personality, memory and tools | ~free | Yes, this weekend |
-| Your **own model weights**, trained by you, running on your machine | ~free | Yes |
-| A model **as capable as Claude or GPT-4** | $100M–$1B+, thousands of GPUs, ~100 people, months | No — and neither can anyone else solo |
-
-That last row is not pessimism, it is arithmetic. Frontier training runs burn
-more electricity than a small town and require hardware you cannot rent casually.
-Anyone claiming otherwise is selling a course.
-
-The first two rows are completely within reach, and they are where all the actual
-learning is. This repo does both.
+<div align="center">
+  <img src="web/static/logo.svg" width="88" alt="Praxis">
+  <h1>Praxis</h1>
+  <p><strong>Think. Challenge. Build. Verify. Execute.</strong></p>
+  <p>A personal AI that argues with your ideas instead of flattering them,<br>
+  remembers what matters, uses real tools, and runs free on your own machine.</p>
+</div>
 
 ---
 
-## What's in here
+## Get it running
 
-```
-scratch/     Build and train a transformer from zero. CPU is enough.
-finetune/    LoRA-tune an open model so the weights are genuinely yours.
-app/         A real chat app. Streaming UI, memory, personality, pluggable brain.
-docs/        The roadmap: what to learn, in what order, and what to skip.
+```bash
+git clone https://github.com/Abhay070/Abhay-AI.git
+cd Abhay-AI
+pip install -r requirements.txt
+python server.py            # → http://localhost:8000
 ```
 
-Each stage stands alone. Do them in any order. Suggested order is `scratch` →
-`app` → `finetune`, because understanding the model makes everything else stop
-feeling like magic.
+That works immediately on the demo backend — no key, no account, no model. Then
+give it a real brain, free and offline:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh   # Windows: installer at ollama.com
+ollama pull llama3.2
+echo "PROVIDER=ollama" > .env
+python server.py
+```
+
+That's the whole setup. `llama3.2` is ~2 GB and runs on 8 GB of RAM.
 
 ---
 
-## Stage 1 — Train your own model from scratch
+## What it is
 
-You write the transformer, you train it, the weights are yours. Runs on a laptop
-CPU in minutes.
+Most assistants are tuned to be agreeable — ask whether your idea is good and
+you'll hear what's exciting about it. Praxis is built on a different
+instruction: **respect the person, interrogate the idea.**
+
+| | |
+|---|---|
+| **10 modes** | Founder interrogates. Teacher explains. Direct deletes every word that isn't the answer. One click, no cost. |
+| **9 tools** | Exact arithmetic, web search, page reading, code execution, file analysis, memory. It computes instead of predicting. |
+| **7 backends** | Ollama, Groq, Gemini, any OpenAI-compatible endpoint, Claude, a model you trained yourself — or the zero-setup demo. |
+| **Real memory** | Durable facts across every conversation, each one visible, editable and deletable. |
+| **Yours** | One SQLite file on your disk. No account, no telemetry, works with the network off. |
+
+**[Read the field manual →](docs/PRAXIS.html)** — every mode, every tool, how a
+turn works, and an honest section on what it isn't.
+
+---
+
+## Picking a backend
+
+Set `PROVIDER` in `.env`. Everything except Claude has a free path.
+
+| Backend | Cost | Offline | Setup |
+|---|---|---|---|
+| `demo` | free | yes | none — already running |
+| `ollama` | free | yes | install, `ollama pull llama3.2` — **recommended** |
+| `groq` | free tier | no | free key, no card, at [console.groq.com](https://console.groq.com) |
+| `gemini` | free tier | no | free key at [aistudio.google.com](https://aistudio.google.com/apikey) |
+| `openai` | varies | depends | LM Studio, vLLM, OpenRouter, Together… |
+| `anthropic` | paid | no | strongest option, if you want one |
+| `scratch` | free | yes | the model you train below |
+
+Set `FALLBACK_CHAIN=ollama,groq,demo` and it health-checks them in order — if
+your local model is down it moves on and says why, rather than failing.
+
+---
+
+## Where to run it
+
+Praxis is a Python server, so something has to actually run it.
+
+- **Your own machine** — free, private, offline. Start here.
+- **Tailscale** — ten minutes, gets it on your phone, nothing exposed publicly.
+- **GitHub Codespaces** — one click; this repo ships a `.devcontainer/`.
+  Port forwarding is private by default, which is what makes that safe.
+- **GitHub Pages** — hosts *this landing page* only. It serves static files and
+  cannot run Python, so the assistant itself can't live there.
+
+> **Before putting it on the public internet:** Praxis has no login and no
+> per-user separation — it binds to localhost on purpose. Deployed publicly
+> as-is, anyone with the URL reads your conversations, edits your memory, and
+> spends your API quota. **[docs/HOSTING.md](docs/HOSTING.md)** lists what has
+> to exist first.
+
+---
+
+## Also in here: how these models actually work
+
+The parts most personal-AI projects skip. All free, all runnable.
+
+**`scratch/` — a transformer from zero.** Not a simplified teaching version:
+causal self-attention, pre-norm residual blocks, weight tying, temperature and
+top-k sampling. The same architecture family as GPT-4, Claude and Gemini.
 
 ```bash
 pip install -r requirements-scratch.txt
-python scratch/prepare_data.py          # gets a corpus (~1 MB of Shakespeare)
-python scratch/train.py                 # ~10–20 min on CPU
+python scratch/prepare_data.py
+python scratch/train.py              # ~15 min on a CPU
 python scratch/sample.py --prompt "To be, or" --stream
 ```
 
-Watch the loss. It starts at about **4.17** — that is exactly the loss of a model
-guessing uniformly among 65 characters, i.e. knowing nothing. Every point it
-drops is real structure the model found in the text on its own. Nobody told it
-what a word is, or that speakers in a play are followed by a colon.
+A measured run: validation loss falls from **4.18** (a model guessing at random)
+to **1.68** in 16 minutes on four CPU cores. At that loss it writes real English
+words, correct punctuation, and the `SPEAKER:` convention of a play — having
+been told none of it. It also means nothing at all. That gap between form and
+meaning is the most useful thing in this repo.
 
-**What you will get:** convincing-looking Shakespearean gibberish. It learns
-spelling, punctuation, dialogue formatting, and the rhythm of the text — with no
-grasp of meaning. That gap between *form* and *meaning*, and how it closes as
-models scale, is the single most instructive thing in machine learning.
+**`finetune/` — LoRA on an open model.** Teach Llama or Qwen your voice. Fits a
+free Colab T4 and produces a ~40 MB adapter rather than a new multi-gigabyte
+model.
 
-Train on your own text instead:
-
-```bash
-python scratch/prepare_data.py --input my_notes.txt
-python scratch/train.py
-```
-
-The code is four short files and every non-obvious line is commented:
-
-- `scratch/model.py` — the transformer. Attention, MLP, residuals, the lot.
-- `scratch/tokenizer.py` — text ↔ integers
-- `scratch/train.py` — the training loop
-- `scratch/sample.py` — generation
-
-**This is the same architecture as GPT-4, Claude and Gemini.** Not similar —
-the same. They are this, with more layers, more data, and a data center.
+**[docs/ROADMAP.md](docs/ROADMAP.md)** — what to learn next, in what order, and
+which popular advice to ignore.
 
 ---
 
-## Stage 2 — A real chat app
+## Layout
 
-The product layer: streaming responses, conversation memory, your own system
-prompt, and a brain you can swap.
-
-```bash
-pip install -r requirements-app.txt
-cp app/.env.example .env
-python app/server.py                    # http://localhost:8000
+```
+praxis/          the assistant — identity, modes, agent loop, tools, memory
+server.py        the API — streaming chat, conversations, memory, uploads
+web/             landing page and the app (no build step)
+scratch/         a GPT you train yourself
+finetune/        LoRA on an open model
+docs/            field manual, hosting guide, learning roadmap
 ```
 
-Pick a backend by setting `PROVIDER` in `.env`. All four are free:
-
-| Provider | What it is | Cost | Needs |
-|---|---|---|---|
-| `ollama` | Open models on your own machine — **best default** | free forever | [ollama.com](https://ollama.com), then `ollama pull llama3.2` |
-| `groq` | Hosted open models, very fast | free tier | free key, no card |
-| `gemini` | Google's models | free tier | free key |
-| `scratch` | Your own model from stage 1 | free | stage 1 |
-
-Two things in `app/server.py` are worth reading closely, because they are the
-whole trick behind every chat assistant you have used:
-
-1. **The model has no memory.** None. The illusion of conversation comes from
-   resending the entire history on every single request. That is the mechanism.
-2. **The personality is a string.** `SYSTEM_PROMPT` in your `.env`. Change it and
-   you change who your AI is, more than any other single edit you can make.
-
-Point `PROVIDER=scratch` at your stage-1 model for a genuinely useful lesson: the
-app is identical, the model is 800k parameters instead of 70 billion, and the
-output is nonsense. It shows you exactly how much of "an AI assistant" is
-scaffolding and how much is the model.
+Configuration is one file. Copy `.env.example` to `.env`; it holds the backend,
+your name, the default mode, which tools are enabled, and the limits. Rename the
+whole product with `BRAND_NAME`.
 
 ---
 
-## Stage 3 — Fine-tune an open model
+## The honest part
 
-Take Llama/Qwen/Mistral and teach it your voice. This is where you get weights
-that are yours, run offline, and actually work.
+Praxis is the scaffolding — identity, memory, tools, interface. The intelligence
+is whatever backend you point it at. On a 3-billion-parameter local model it
+will be noticeably less capable than ChatGPT, because it is. That's the trade
+for free, private and offline, and it's a good trade — but it's a trade.
 
-```bash
-pip install -r requirements-finetune.txt
-python finetune/train_lora.py --data finetune/data/example.jsonl
-python finetune/chat.py
-```
-
-Needs a GPU. A **free Google Colab T4** is enough — that is the intended target.
-
-Why it is free: full fine-tuning of a 7B model needs ~60 GB of VRAM. LoRA freezes
-the original weights and trains small matrices beside them — under 1% of the
-parameters — and 4-bit quantization shrinks the rest. It fits in 16 GB. You get a
-~40 MB adapter file, not a new multi-gigabyte model.
-
-Your data goes in `finetune/data/*.jsonl`, one JSON object per line:
-
-```json
-{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
-```
-
-A few hundred examples you wrote carefully beat ten thousand scraped ones. This
-is the most consistently underestimated fact in fine-tuning.
-
----
-
-## What to do first
-
-If you only do one thing: **stage 1.** Run the training, watch the loss fall,
-read `scratch/model.py` top to bottom. It is 200 lines and it is the whole idea.
-Everything else in AI is a variation on it.
-
-Then read [`docs/ROADMAP.md`](docs/ROADMAP.md) — what to learn next, in what
-order, and which popular advice to ignore.
-
----
-
-## Cost summary
-
-| | Cost |
-|---|---|
-| Stage 1 — train from scratch | $0 (your CPU) |
-| Stage 2 — chat app | $0 (Ollama local, or a free API tier) |
-| Stage 3 — LoRA fine-tune | $0 (free Colab T4) |
-| Matching Claude | $100,000,000+ |
-
-Three out of four is a good ratio.
+Matching a frontier model isn't on this path. That costs $100M+ in compute and a
+large team. Everything else here is genuinely within reach.

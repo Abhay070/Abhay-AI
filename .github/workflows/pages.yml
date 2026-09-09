@@ -1,0 +1,51 @@
+# Publishes the landing page to GitHub Pages on every push.
+#
+# Pages serves files; it cannot run Python. So this deploys the showcase page
+# only — the assistant itself runs on your own machine. See docs/HOSTING.md.
+#
+# One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+
+name: Deploy landing page
+
+on:
+  push:
+    branches: [claude/custom-ai-models-dln3p4]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build the static site
+        run: python scripts/build_pages.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
