@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import random
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import AsyncIterator
@@ -141,6 +142,33 @@ class DemoProvider(Provider):
             return
 
         lowered = last.lower()
+
+        # Any question carrying two or more numbers is an arithmetic question,
+        # whatever words surround it. Build the tool call from the user's own
+        # numbers rather than a canned expression — a demo that only fires on
+        # the magic word "calculate" demonstrates nothing about the tool layer.
+        pair = re.search(r"(\d[\d,]*(?:\.\d+)?)\s*(?:x|×|\*|by)\s*(\d[\d,]*(?:\.\d+)?)",
+                         lowered)
+        if pair:
+            operands = [pair.group(1), pair.group(2)]
+        else:
+            found = [n.replace(",", "") for n in
+                     re.findall(r"\d[\d,]*(?:\.\d+)?", lowered)]
+            # Largest two, so "4K" in the prose loses to the real dimensions.
+            operands = sorted(found, key=lambda n: float(n or 0), reverse=True)[:2]
+
+        if len(operands) >= 2 and not any(w in lowered for w in
+                                          ("remember", "my name is")):
+            expression = "{}*{}".format(*[o.replace(",", "") for o in operands])
+            reply = ("Arithmetic goes to a tool — I'd only be predicting plausible "
+                     "digits otherwise:\n\n"
+                     f'<tool_call>\n{{"name": "calculate", "args": '
+                     f'{{"expression": "{expression}"}}}}\n</tool_call>')
+            for word in reply.split(" "):
+                yield word + " "
+                await asyncio.sleep(0.014)
+            return
+
         reply = self.DEFAULT.format(n=len(toolkit.REGISTRY))
         for triggers, script in self.SCRIPTS:
             if any(t in lowered for t in triggers):
