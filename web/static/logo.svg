@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Praxis">
+  <defs>
+    <!-- The translucent resin case: milky white with a cool edge. -->
+    <linearGradient id="case" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4e8dd"/>
+    </linearGradient>
+    <linearGradient id="dial" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef1e8"/>
+    </linearGradient>
+    <!-- The LCD window: that olive-green panel is the watch's signature. -->
+    <linearGradient id="lcd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aab66"/>
+      <stop offset="1" stop-color="#7d8d52"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Case -->
+  <rect x="4" y="4" width="112" height="112" rx="30"
+        fill="url(#case)" stroke="#c8cebd" stroke-width="2.5"/>
+
+  <!-- Bezel ring -->
+  <circle cx="60" cy="60" r="45" fill="none" stroke="#d5dac9" stroke-width="7"/>
+
+  <!-- Four signal arcs, at the compass points, in the watch's own palette.
+       Red top, blue right, green bottom, yellow left. -->
+  <g fill="none" stroke-width="7" stroke-linecap="round">
+    <path d="M 42 21 A 45 45 0 0 1 78 21"  stroke="#e0362c" transform="rotate(0 60 60)"/>
+    <path d="M 99 42 A 45 45 0 0 1 99 78"  stroke="#1f6fd0"/>
+    <path d="M 78 99 A 45 45 0 0 1 42 99"  stroke="#1f9a4d"/>
+    <path d="M 21 78 A 45 45 0 0 1 21 42"  stroke="#f2b81e"/>
+  </g>
+
+  <!-- Dial -->
+  <circle cx="60" cy="60" r="34" fill="url(#dial)" stroke="#cfd5c4" stroke-width="2"/>
+
+  <!-- LCD window -->
+  <rect x="34" y="49" width="52" height="27" rx="5" fill="url(#lcd)"/>
+
+  <!-- The mark itself: a hard-edged P, the way a segment display would draw it -->
+  <path d="M 46 55 L 46 71 M 46 55 L 58 55 Q 64 55 64 60.5 Q 64 66 58 66 L 46 66"
+        fill="none" stroke="#f2f5e8" stroke-width="4.6"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+
+  <!-- Index ticks at the diagonals -->
+  <g stroke="#b9c0aa" stroke-width="3" stroke-linecap="round">
+    <line x1="60" y1="30" x2="60" y2="36"/>
+    <line x1="60" y1="84" x2="60" y2="90"/>
+  </g>
+</svg>

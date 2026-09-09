@@ -164,7 +164,7 @@ async function boot() {
   $('brandName').textContent = data.brand.name;
   $('brandVer').textContent = 'v' + data.brand.version;
   document.querySelectorAll('.brand-mark').forEach(n => {
-    n.textContent = data.brand.name[0].toUpperCase();
+    n.textContent = data.brand.name;   // hidden by text-indent; kept for a11y
   });
 
   const p = data.provider;
@@ -183,7 +183,7 @@ async function boot() {
   renderEmpty();
 
   document.documentElement.dataset.theme =
-    localStorage.getItem('praxis.theme') || 'dark';
+    localStorage.getItem('praxis.theme') || 'light';
 }
 
 /* --- modes ---------------------------------------------------------------- */
@@ -306,10 +306,9 @@ function renderEmpty() {
   const inner = $('threadInner');
   inner.innerHTML = '';
   const wrap = el('div', 'empty');
-  const initial = (state.brand.name || 'P')[0].toUpperCase();
   wrap.innerHTML =
-    '<div class="empty-mark">' + initial + '</div>' +
-    '<h2>' + escapeHtml(state.brand.name || 'Praxis') + '</h2>' +
+    '<div class="empty-mark">' + escapeHtml(state.brand.name || 'Praxis') + '</div>' +
+    '<h2>What are we building?</h2>' +
     '<div class="empty-tag">' + escapeHtml(state.brand.tagline || '') + '</div>';
   const grid = el('div', 'starters');
   for (const [mode, text] of STARTERS) {
@@ -704,7 +703,7 @@ async function openSettings() {
     const themeField = el('div', 'field');
     themeField.innerHTML = '<label>Theme</label>';
     const themeSel = el('select');
-    ['dark', 'light'].forEach(t => {
+    ['light', 'dark'].forEach(t => {
       const o = el('option', null, t[0].toUpperCase() + t.slice(1));
       o.value = t;
       if (document.documentElement.dataset.theme === t) o.selected = true;
@@ -834,7 +833,7 @@ function openPalette() {
 /* --- misc actions --------------------------------------------------------- */
 
 function toggleTheme() {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
   localStorage.setItem('praxis.theme', next);
 }
