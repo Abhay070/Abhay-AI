@@ -1,0 +1,1002 @@
+<title>Praxis Field Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+
+<style>
+/* ===========================================================================
+   Praxis Field Manual
+
+   Treated as an instrument datasheet rather than a landing page: the palette is
+   lifted from a translucent resin watch case — milky ground, four signal
+   colours at the bezel, one olive LCD window — and the structure follows a spec
+   sheet, because that is what this document is.
+
+   Every colour is declared on bare :root first, then re-declared for the two
+   dark states, so the un-stamped "system" viewer gets a complete palette.
+   =========================================================================== */
+
+:root {
+  --ground:   #ecEEe6;
+  --surface:  #ffffff;
+  --sunken:   #f4f6ef;
+  --hover:    #e4e8da;
+  --rule:     #d8dccc;
+  --rule-firm:#bcc3ac;
+
+  --ink:      #1a1c17;
+  --ink-mid:  #565b50;
+  --ink-soft: #878d7f;
+
+  --red:    #d8332a;
+  --blue:   #1c66c4;
+  --green:  #1c8f47;
+  --yellow: #d59a06;
+
+  --lcd:      #7f8f52;
+  --lcd-lift: #93a462;
+  --lcd-ink:  #1f2610;
+  --lcd-hi:   #fbfdf2;
+
+  --shadow:    0 1px 2px rgba(38,46,28,.06), 0 8px 26px rgba(38,46,28,.07);
+  --shadow-up: 0 2px 6px rgba(38,46,28,.08), 0 20px 50px rgba(38,46,28,.12);
+
+  --display: Archivo, "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --measure: 68ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:   #15171a;
+    --surface:  #1d2023;
+    --sunken:   #23272a;
+    --hover:    #2b3034;
+    --rule:     #313639;
+    --rule-firm:#454c51;
+
+    --ink:      #eceee7;
+    --ink-mid:  #a2a89d;
+    --ink-soft: #737a6f;
+
+    --red:    #ff6155;
+    --blue:   #63a6f8;
+    --green:  #4ec97f;
+    --yellow: #ffc74a;
+
+    --lcd:      #6b7a45;
+    --lcd-lift: #859555;
+
+    --shadow:    0 1px 2px rgba(0,0,0,.42), 0 8px 26px rgba(0,0,0,.34);
+    --shadow-up: 0 2px 6px rgba(0,0,0,.46), 0 20px 50px rgba(0,0,0,.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:   #15171a;
+  --surface:  #1d2023;
+  --sunken:   #23272a;
+  --hover:    #2b3034;
+  --rule:     #313639;
+  --rule-firm:#454c51;
+
+  --ink:      #eceee7;
+  --ink-mid:  #a2a89d;
+  --ink-soft: #737a6f;
+
+  --red:    #ff6155;
+  --blue:   #63a6f8;
+  --green:  #4ec97f;
+  --yellow: #ffc74a;
+
+  --lcd:      #6b7a45;
+  --lcd-lift: #859555;
+
+  --shadow:    0 1px 2px rgba(0,0,0,.42), 0 8px 26px rgba(0,0,0,.34);
+  --shadow-up: 0 2px 6px rgba(0,0,0,.46), 0 20px 50px rgba(0,0,0,.5);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+
+/* --- shell ---------------------------------------------------------------- */
+
+.shell { max-width: 1120px; margin: 0 auto; padding: 0 26px; }
+
+.layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 52px; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; gap: 0; } }
+
+nav.toc {
+  position: sticky; top: 26px; align-self: start;
+  padding: 22px 0 40px; font-family: var(--mono); font-size: 11.5px;
+}
+@media (max-width: 900px) { nav.toc { display: none; } }
+nav.toc .toc-head {
+  text-transform: uppercase; letter-spacing: .14em; color: var(--ink-soft);
+  font-weight: 600; margin-bottom: 12px; font-size: 10px;
+}
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+nav.toc a {
+  display: flex; gap: 9px; padding: 5px 8px; border-radius: 6px;
+  color: var(--ink-mid); text-decoration: none;
+}
+nav.toc a:hover { background: var(--hover); color: var(--ink); text-decoration: none; }
+nav.toc .num { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+/* --- masthead ------------------------------------------------------------- */
+
+header.masthead { padding: 54px 0 34px; }
+
+.crest { display: flex; align-items: center; gap: 15px; margin-bottom: 30px; }
+.crest svg { width: 54px; height: 54px; flex: none; }
+.crest-name {
+  font-family: var(--display); font-weight: 800; font-size: 25px;
+  letter-spacing: -0.026em; line-height: 1;
+}
+.crest-sub {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .17em; margin-top: 5px;
+}
+
+h1 {
+  font-family: var(--display); font-weight: 800;
+  font-size: clamp(38px, 5.6vw, 60px); line-height: 1.02;
+  letter-spacing: -0.036em; margin: 0 0 20px; text-wrap: balance;
+  max-width: 17ch;
+}
+h1 .sig-r { color: var(--red); }
+h1 .sig-g { color: var(--green); }
+
+.standfirst {
+  font-size: 19px; line-height: 1.58; color: var(--ink-mid);
+  max-width: var(--measure); margin: 0 0 30px;
+}
+.standfirst strong { color: var(--ink); font-weight: 600; }
+
+/* spec strip — the datasheet header */
+.spec-strip {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--rule); border-radius: 14px;
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+}
+@media (max-width: 720px) { .spec-strip { grid-template-columns: repeat(2, 1fr); } }
+.spec {
+  padding: 16px 18px; border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.spec:last-child { border-right: none; }
+.spec-n {
+  font-family: var(--display); font-weight: 700; font-size: 27px;
+  line-height: 1; letter-spacing: -0.028em; font-variant-numeric: tabular-nums;
+}
+.spec-l {
+  font-family: var(--mono); font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .13em; color: var(--ink-soft); margin-top: 7px;
+}
+.spec:nth-child(1) .spec-n { color: var(--red); }
+.spec:nth-child(2) .spec-n { color: var(--blue); }
+.spec:nth-child(3) .spec-n { color: var(--green); }
+.spec:nth-child(4) .spec-n { color: var(--yellow); }
+.spec:nth-child(5) .spec-n { color: var(--lcd); }
+
+/* --- sections ------------------------------------------------------------- */
+
+section { padding: 46px 0; border-top: 1px solid var(--rule); }
+section:first-of-type { border-top: none; }
+
+.sec-mark {
+  display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px;
+}
+.sec-num {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--ink-soft); letter-spacing: .1em; font-variant-numeric: tabular-nums;
+}
+h2 {
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(25px, 3.1vw, 33px); letter-spacing: -0.028em;
+  margin: 0 0 14px; line-height: 1.12; text-wrap: balance;
+}
+h3 {
+  font-family: var(--display); font-weight: 650; font-size: 17.5px;
+  letter-spacing: -0.014em; margin: 30px 0 9px;
+}
+p { max-width: var(--measure); margin: 0 0 16px; }
+p.lead { font-size: 17.5px; color: var(--ink-mid); line-height: 1.6; }
+strong { font-weight: 600; }
+em { font-style: italic; color: var(--ink-mid); }
+
+ul.plain { max-width: var(--measure); padding-left: 20px; margin: 0 0 16px; }
+ul.plain li { margin: 6px 0; }
+ul.plain li::marker { color: var(--ink-soft); }
+
+code {
+  font-family: var(--mono); font-size: .87em;
+  background: var(--sunken); border: 1px solid var(--rule);
+  padding: .1em .38em; border-radius: 5px;
+}
+
+/* --- pull quote ----------------------------------------------------------- */
+
+.creed {
+  border-left: 3px solid var(--red); padding: 4px 0 4px 20px;
+  margin: 26px 0; max-width: var(--measure);
+}
+.creed p {
+  font-family: var(--display); font-weight: 600; font-size: 20px;
+  line-height: 1.42; letter-spacing: -0.014em; margin: 0; color: var(--ink);
+}
+.creed cite {
+  display: block; font-family: var(--mono); font-size: 10.5px; font-style: normal;
+  color: var(--ink-soft); text-transform: uppercase; letter-spacing: .12em;
+  margin-top: 10px;
+}
+
+/* --- pipeline diagram ----------------------------------------------------- */
+
+.pipeline {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 0;
+  border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow); margin: 26px 0 14px;
+}
+@media (max-width: 860px) { .pipeline { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 520px) { .pipeline { grid-template-columns: repeat(2, 1fr); } }
+.stage {
+  padding: 16px 15px 18px; border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule); position: relative;
+}
+.stage::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--tone);
+}
+.stage:last-child { border-right: none; }
+.stage-n {
+  font-family: var(--mono); font-size: 9.5px; color: var(--ink-soft);
+  letter-spacing: .13em; margin-bottom: 8px;
+}
+.stage-t {
+  font-family: var(--display); font-weight: 680; font-size: 14.5px;
+  letter-spacing: -0.008em; color: var(--tone); margin-bottom: 5px;
+}
+.stage-d { font-size: 12.4px; line-height: 1.5; color: var(--ink-mid); }
+.pipe-note {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  max-width: var(--measure);
+}
+
+/* --- tables --------------------------------------------------------------- */
+
+.table-frame {
+  border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow); margin: 22px 0;
+}
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14.2px; min-width: 560px; }
+thead { background: var(--sunken); }
+th {
+  text-align: left; padding: 12px 16px; font-family: var(--mono);
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .13em;
+  color: var(--ink-soft); font-weight: 600; white-space: nowrap;
+}
+td { padding: 13px 16px; vertical-align: top; border-top: 1px solid var(--rule); }
+tbody tr:hover { background: var(--sunken); }
+
+.mode-glyph {
+  font-family: var(--mono); font-size: 15px; width: 1.4em;
+  display: inline-block; text-align: center;
+}
+.name-cell { font-weight: 600; white-space: nowrap; }
+.mono-cell { font-family: var(--mono); font-size: 12.6px; white-space: nowrap; }
+td.desc { color: var(--ink-mid); min-width: 260px; }
+
+tbody tr:nth-child(4n+1) .mode-glyph { color: var(--red); }
+tbody tr:nth-child(4n+2) .mode-glyph { color: var(--blue); }
+tbody tr:nth-child(4n+3) .mode-glyph { color: var(--green); }
+tbody tr:nth-child(4n)   .mode-glyph { color: var(--yellow); }
+
+.tag {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  white-space: nowrap;
+}
+.tag-free { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
+.tag-paid { background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); }
+.tag-off  { background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--rule); }
+.yes { color: var(--green); font-weight: 600; }
+.no  { color: var(--ink-soft); }
+
+/* --- LCD transcript ------------------------------------------------------- */
+
+.lcd-unit {
+  border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+  box-shadow: var(--shadow-up); margin: 24px 0; background: var(--surface);
+}
+.lcd-bar {
+  display: flex; align-items: center; gap: 7px; padding: 10px 15px;
+  border-bottom: 1px solid var(--rule); background: var(--sunken);
+}
+.bead { width: 10px; height: 10px; border-radius: 50%; }
+.lcd-cap {
+  margin-left: 8px; font-family: var(--mono); font-size: 10.5px;
+  color: var(--ink-soft); letter-spacing: .07em;
+}
+.lcd-face {
+  background: linear-gradient(168deg, var(--lcd-lift), var(--lcd));
+  padding: 19px 21px;
+}
+.lcd-face pre {
+  margin: 0; font-family: var(--mono); font-size: 12.6px; line-height: 1.8;
+  color: var(--lcd-ink); overflow-x: auto;
+}
+.lcd-face .faint { color: color-mix(in srgb, var(--lcd-ink) 52%, transparent); }
+.lcd-face .bright { color: var(--lcd-hi); font-weight: 600; }
+.lcd-face .tick { color: #14380c; font-weight: 700; }
+:root[data-theme="dark"] .lcd-face .tick,
+:root:not([data-theme="light"]) .lcd-face .tick { color: #d7f5c0; }
+
+/* --- terminal ------------------------------------------------------------- */
+
+.term { border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+        background: var(--surface); box-shadow: var(--shadow); margin: 22px 0; }
+.term pre {
+  margin: 0; padding: 19px 21px; font-family: var(--mono);
+  font-size: 12.8px; line-height: 1.85; color: var(--ink-mid); overflow-x: auto;
+}
+.term .cmd { color: var(--blue); font-weight: 500; }
+.term .rem { color: var(--ink-soft); }
+.term .good { color: var(--green); font-weight: 600; }
+
+/* --- file map ------------------------------------------------------------- */
+
+.filemap {
+  border: 1px solid var(--rule); border-radius: 14px; background: var(--surface);
+  box-shadow: var(--shadow); padding: 8px 4px; margin: 22px 0;
+  font-family: var(--mono); font-size: 12.7px;
+}
+.frow {
+  display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px;
+  padding: 7px 16px; border-radius: 7px; align-items: baseline;
+}
+.frow:hover { background: var(--sunken); }
+@media (max-width: 620px) { .frow { grid-template-columns: 1fr; gap: 2px; } }
+.fpath { color: var(--ink); font-weight: 500; }
+.fdesc { color: var(--ink-mid); font-family: var(--body); font-size: 13.2px; }
+.fgroup {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--ink-soft); padding: 15px 16px 5px;
+}
+
+/* --- limits --------------------------------------------------------------- */
+
+.limits { display: grid; gap: 12px; margin: 22px 0; max-width: var(--measure); }
+.limit {
+  border: 1px solid var(--rule); border-left: 3px solid var(--yellow);
+  border-radius: 10px; padding: 14px 17px; background: var(--surface);
+}
+.limit h4 {
+  margin: 0 0 5px; font-family: var(--display); font-weight: 650;
+  font-size: 14.8px; letter-spacing: -0.008em;
+}
+.limit p { margin: 0; font-size: 13.8px; color: var(--ink-mid); max-width: none; }
+
+/* --- callout -------------------------------------------------------------- */
+
+.note {
+  border: 1px solid var(--rule); border-radius: 12px; padding: 16px 19px;
+  background: var(--surface); box-shadow: var(--shadow);
+  margin: 22px 0; max-width: var(--measure);
+}
+.note-label {
+  font-family: var(--mono); font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .14em; color: var(--blue); font-weight: 600; margin-bottom: 7px;
+}
+.note p { margin: 0; font-size: 14.2px; color: var(--ink-mid); max-width: none; }
+
+footer {
+  border-top: 1px solid var(--rule); padding: 30px 0 60px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+}
+.sig-dots { display: flex; gap: 5px; }
+.sig-dots span { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+
+<div class="shell">
+<header class="masthead">
+  <div class="crest">
+    <svg viewBox="0 0 120 120" role="img" aria-label="Praxis mark">
+      <rect x="4" y="4" width="112" height="112" rx="30" fill="var(--surface)" stroke="var(--rule-firm)" stroke-width="2.5"/>
+      <circle cx="60" cy="60" r="45" fill="none" stroke="var(--rule)" stroke-width="7"/>
+      <g fill="none" stroke-width="7" stroke-linecap="round">
+        <path d="M 42 21 A 45 45 0 0 1 78 21" stroke="var(--red)"/>
+        <path d="M 99 42 A 45 45 0 0 1 99 78" stroke="var(--blue)"/>
+        <path d="M 78 99 A 45 45 0 0 1 42 99" stroke="var(--green)"/>
+        <path d="M 21 78 A 45 45 0 0 1 21 42" stroke="var(--yellow)"/>
+      </g>
+      <circle cx="60" cy="60" r="34" fill="var(--sunken)" stroke="var(--rule)" stroke-width="2"/>
+      <rect x="34" y="49" width="52" height="27" rx="5" fill="var(--lcd)"/>
+      <path d="M 46 55 L 46 71 M 46 55 L 58 55 Q 64 55 64 60.5 Q 64 66 58 66 L 46 66"
+            fill="none" stroke="var(--lcd-hi)" stroke-width="4.6"
+            stroke-linecap="square" stroke-linejoin="miter"/>
+    </svg>
+    <div>
+      <div class="crest-name">Praxis</div>
+      <div class="crest-sub">Field Manual · v1.0.0</div>
+    </div>
+  </div>
+
+  <h1>An AI that <span class="sig-r">argues back</span> and then <span class="sig-g">builds the thing</span></h1>
+
+  <p class="standfirst">
+    Praxis is a personal AI assistant you run yourself. It takes the same shape as
+    ChatGPT or Claude — you type, it streams back — but it is built on a different
+    instruction: <strong>respect the person, interrogate the idea.</strong> It has
+    ten operating modes, remembers what matters about you, calls real tools instead
+    of guessing, and runs entirely on your own machine for nothing.
+  </p>
+
+  <div class="spec-strip">
+    <div class="spec"><div class="spec-n">10</div><div class="spec-l">Modes</div></div>
+    <div class="spec"><div class="spec-n">9</div><div class="spec-l">Tools</div></div>
+    <div class="spec"><div class="spec-n">7</div><div class="spec-l">Backends</div></div>
+    <div class="spec"><div class="spec-n">6</div><div class="spec-l">Memory types</div></div>
+    <div class="spec"><div class="spec-n">$0</div><div class="spec-l">To run</div></div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-head">Contents</div>
+    <ol>
+      <li><a href="#idea"><span class="num">01</span> The idea</a></li>
+      <li><a href="#turn"><span class="num">02</span> How a turn works</a></li>
+      <li><a href="#modes"><span class="num">03</span> Ten modes</a></li>
+      <li><a href="#tools"><span class="num">04</span> Nine tools</a></li>
+      <li><a href="#memory"><span class="num">05</span> Memory</a></li>
+      <li><a href="#brains"><span class="num">06</span> Backends</a></li>
+      <li><a href="#interface"><span class="num">07</span> Interface</a></li>
+      <li><a href="#build"><span class="num">08</span> How it's built</a></li>
+      <li><a href="#run"><span class="num">09</span> Running it</a></li>
+      <li><a href="#limits"><span class="num">10</span> What it isn't</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+  <section id="idea">
+    <div class="sec-mark"><span class="sec-num">01</span></div>
+    <h2>The idea</h2>
+    <p class="lead">
+      Most assistants are tuned to be agreeable. Ask whether your business idea is
+      good and you will hear what is exciting about it. That is pleasant and almost
+      useless — the failure mode of a helpful assistant is telling you what you
+      hoped to hear.
+    </p>
+    <p>
+      Praxis is built the other way round. Its core instruction says that agreement
+      it did not actually reach is a failure, not politeness; that weak assumptions
+      get named; that if there is a better approach it should argue for it. The
+      identity is compiled into the system prompt on every single request, so this
+      is not a mode you remember to switch on — it is the baseline.
+    </p>
+
+    <div class="creed">
+      <p>Don't just answer. Think. Challenge. Build. Verify. Execute.</p>
+      <cite>The operating loop, from the specification</cite>
+    </div>
+
+    <p>
+      Four commitments follow from that, and each one shows up as a concrete
+      mechanism rather than a promise in a prompt:
+    </p>
+    <ul class="plain">
+      <li><strong>It says what it doesn't know.</strong> Knowledge is classified as
+          known, uncertain, current, provided or inferred — and it is told never to
+          blur those categories or present an assumption as a fact.</li>
+      <li><strong>It never claims work it didn't do.</strong> It cannot say it
+          searched, ran, read or verified something unless a tool actually returned.
+          If a tool fails, it reports the failure.</li>
+      <li><strong>It computes rather than predicts.</strong> Arithmetic goes to a
+          calculator, current facts go to a search, code gets executed.</li>
+      <li><strong>It ends with a move.</strong> Insight, then recommendation, then
+          the next action — rather than three paragraphs of information and a
+          summary of the paragraphs.</li>
+    </ul>
+  </section>
+
+  <section id="turn">
+    <div class="sec-mark"><span class="sec-num">02</span></div>
+    <h2>How a turn works</h2>
+    <p class="lead">
+      Everything between pressing Enter and reading an answer, in order. Stages 4
+      and 5 can repeat: the model asks for a tool, gets the result, and continues.
+    </p>
+
+    <div class="pipeline">
+      <div class="stage" style="--tone: var(--red)">
+        <div class="stage-n">01</div>
+        <div class="stage-t">Compose</div>
+        <div class="stage-d">Core identity, the active mode, and the current date are assembled into one system prompt.</div>
+      </div>
+      <div class="stage" style="--tone: var(--yellow)">
+        <div class="stage-n">02</div>
+        <div class="stage-t">Recall</div>
+        <div class="stage-d">Memories are scored against the recent conversation; the most relevant dozen join the context.</div>
+      </div>
+      <div class="stage" style="--tone: var(--blue)">
+        <div class="stage-n">03</div>
+        <div class="stage-t">Stream</div>
+        <div class="stage-d">The backend answers token by token. Text reaches your screen as it is produced.</div>
+      </div>
+      <div class="stage" style="--tone: var(--lcd)">
+        <div class="stage-n">04</div>
+        <div class="stage-t">Intercept</div>
+        <div class="stage-d">A tool call is caught mid-stream and held back, so raw syntax never reaches you.</div>
+      </div>
+      <div class="stage" style="--tone: var(--green)">
+        <div class="stage-n">05</div>
+        <div class="stage-t">Execute</div>
+        <div class="stage-d">The tool runs. Its result is fed back and the model continues from there.</div>
+      </div>
+      <div class="stage" style="--tone: var(--red)">
+        <div class="stage-n">06</div>
+        <div class="stage-t">Record</div>
+        <div class="stage-d">The answer is saved with its mode, backend, tool count and elapsed time.</div>
+      </div>
+    </div>
+    <p class="pipe-note">
+      Stages 4–5 loop up to six times per turn, then stop — a ceiling so a confused
+      model cannot spin forever burning tokens.
+    </p>
+
+    <h3>What that looks like</h3>
+    <div class="lcd-unit">
+      <div class="lcd-bar">
+        <span class="bead" style="background: var(--red)"></span>
+        <span class="bead" style="background: var(--yellow)"></span>
+        <span class="bead" style="background: var(--green)"></span>
+        <span class="lcd-cap">one turn, standard mode</span>
+      </div>
+      <div class="lcd-face">
+<pre><span class="faint">you ›</span> <span class="bright">how many pixels in a 4K frame, and is that 4× 1080p?</span>
+
+  ∑ calculate   3840*2160                        <span class="tick">✓</span>
+  ∑ calculate   (3840*2160)/(1920*1080)          <span class="tick">✓</span>
+
+<span class="faint">praxis ›</span> <span class="bright">8,294,400 pixels. And yes — exactly 4×, because 4K
+doubles both dimensions rather than one.</span>
+
+<span class="faint">2.1s · 2 tool calls · 0 guesses</span></pre>
+      </div>
+    </div>
+    <p>
+      The two calculations are real. A language model asked that question directly
+      will often produce a number that looks right and isn't, because it is
+      predicting plausible digits rather than multiplying. Every tool call is shown
+      in the interface as it happens, and you can expand any of them to see exactly
+      what came back.
+    </p>
+  </section>
+
+  <section id="modes">
+    <div class="sec-mark"><span class="sec-num">03</span></div>
+    <h2>Ten modes</h2>
+    <p class="lead">
+      A mode is a behavioural overlay, not a different model — so switching is
+      instant and costs nothing. The core identity holds throughout; the mode
+      sharpens it for the work in front of you.
+    </p>
+
+    <div class="table-frame"><div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Mode</th><th>What changes</th><th>Reach for it when</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◈</span> Standard</td>
+            <td class="desc">Nothing added — the core identity on its own, adapting to what you bring.</td>
+            <td class="desc">Default. Most conversations.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">→</span> Direct</td>
+            <td class="desc">Conclusion first, under 150 words, no preamble or closing pleasantries. Says the uncomfortable thing in sentence one.</td>
+            <td class="desc">You're in a hurry, or you want the verdict without the cushioning.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">▲</span> Founder</td>
+            <td class="desc">Interrogates commercially: who specifically needs this, what do they do instead, why now, what's the moat, what kills it, what's the cheapest experiment.</td>
+            <td class="desc">Any business idea, before you write code.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">⊗</span> Reality Check</td>
+            <td class="desc">Structured teardown across ten headings, ending in a verdict: pursue, pursue with changes, test first, or drop it.</td>
+            <td class="desc">A decision you keep going back and forth on.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">⚒</span> Build</td>
+            <td class="desc">Requirements to architecture to code to deployment. Recommends one stack and defends it instead of listing four.</td>
+            <td class="desc">Turning an idea into something that actually runs.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◇</span> Research</td>
+            <td class="desc">Searches before answering, names sources, checks dates, surfaces disagreement, marks anything unverified.</td>
+            <td class="desc">Anything current, contested, or that you'd need to cite.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◎</span> Teacher</td>
+            <td class="desc">Builds from what you already know, one idea at a time, concrete example before the general rule, and names the common misconception.</td>
+            <td class="desc">Learning something properly rather than getting an answer.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">?</span> Socratic</td>
+            <td class="desc">Refuses to give the answer. Asks the one question that exposes the gap. Gives in if you explicitly ask it to.</td>
+            <td class="desc">You want to actually understand it, not be told it.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">✓</span> Exam</td>
+            <td class="desc">Questions one at a time, honest marking, difficulty that adapts to your streak, and a report on what's weak.</td>
+            <td class="desc">Revision, or finding out what you don't actually know.</td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">▤</span> Executive Brief</td>
+            <td class="desc">Situation, problem, options with costs, a recommendation it commits to, and the first action. Under 350 words.</td>
+            <td class="desc">Someone has to decide something today.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div></div>
+
+    <div class="note">
+      <div class="note-label">Design note</div>
+      <p>
+        Modes are text appended to the system prompt, which is why they are free and
+        instant. The source specification runs to several thousand words; sending all
+        of it every turn would cost roughly 4,000 tokens per request and, worse,
+        spread the model's attention across a hundred instructions of which maybe
+        eight apply. Compiling it into an always-on core plus a mode overlay gets the
+        same behaviour at about a quarter of the tokens.
+      </p>
+    </div>
+  </section>
+
+  <section id="tools">
+    <div class="sec-mark"><span class="sec-num">04</span></div>
+    <h2>Nine tools</h2>
+    <p class="lead">
+      Tools are what separate an assistant that talks from one that does. Praxis
+      decides on its own when a tool would materially improve the answer, calls it,
+      and shows you the call.
+    </p>
+
+    <div class="table-frame"><div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Tool</th><th>Does</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">∑</span> <span class="mono-cell">calculate</span></td>
+            <td class="desc">Exact arithmetic. Parses to a syntax tree and walks it — never <code>eval()</code>, which on model output is a remote-code-execution hole.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◷</span> <span class="mono-cell">current_time</span></td>
+            <td class="desc">The real date and time, in any offset. Closes the failure where a model confidently answers "what day is it" from training data.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">⌕</span> <span class="mono-cell">web_search</span></td>
+            <td class="desc">Four interchangeable backends — DuckDuckGo needs no key at all; Brave, Tavily and your own SearXNG are drop-in alternatives.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">⇲</span> <span class="mono-cell">web_fetch</span></td>
+            <td class="desc">Reads a page as clean text. Scripts and styling stripped, whitespace collapsed, truncated with the truncation declared.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">▤</span> <span class="mono-cell">read_file</span></td>
+            <td class="desc">Full text of anything you upload or drag in — code, CSV, Markdown, JSON, logs, PDF.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◆</span> <span class="mono-cell">remember</span></td>
+            <td class="desc">Stores a durable fact about you, in one of six categories, for every future conversation.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◇</span> <span class="mono-cell">recall</span></td>
+            <td class="desc">Searches what it knows about you, for something not already in context.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">◌</span> <span class="mono-cell">forget</span></td>
+            <td class="desc">Deletes a memory — but only on an unambiguous single match, so a vague instruction can't wipe several.</td>
+            <td><span class="tag tag-free">on</span></td>
+          </tr>
+          <tr>
+            <td class="name-cell"><span class="mode-glyph">▶</span> <span class="mono-cell">run_python</span></td>
+            <td class="desc">Real execution in a subprocess with a hard timeout. Genuinely useful for analysis and genuinely dangerous, so it ships disabled.</td>
+            <td><span class="tag tag-off">off by default</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div></div>
+
+    <div class="note">
+      <div class="note-label">On code execution</div>
+      <p>
+        What the isolation gives you, stated plainly: a separate process, a hard
+        timeout, output truncation, a temporary working directory. What it does not
+        give you: a real sandbox. The subprocess runs as your user and can import
+        anything installed and read your files. If you need real isolation, run
+        Praxis in a container. Don't enable this on a machine holding anything you'd
+        mind losing.
+      </p>
+    </div>
+  </section>
+
+  <section id="memory">
+    <div class="sec-mark"><span class="sec-num">05</span></div>
+    <h2>Memory</h2>
+    <p class="lead">
+      Praxis stores keyed facts, not transcripts. <em>"Prefers Rust for systems
+      work"</em> is a memory. <em>"Asked about lifetimes on Tuesday"</em> is not.
+    </p>
+    <p>
+      The model decides what is worth keeping, which is the right design — a rule
+      that stores everything produces a memory nobody can trust, and one that stores
+      nothing produces an assistant that asks your name every morning. What you keep
+      is entirely yours to audit: open the memory panel, edit any fact in place,
+      delete one or all of them. A current instruction always overrides a remembered
+      preference.
+    </p>
+
+    <div class="table-frame"><div class="table-scroll">
+      <table>
+        <thead><tr><th>Category</th><th>Holds</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td class="name-cell mono-cell">fact</td><td class="desc">Stable things true about you</td><td class="desc">Based in Bangalore, works in IST</td></tr>
+          <tr><td class="name-cell mono-cell">preference</td><td class="desc">How you like things done</td><td class="desc">Wants code with comments, no emoji</td></tr>
+          <tr><td class="name-cell mono-cell">project</td><td class="desc">What you're building</td><td class="desc">Building Praxis, a personal AI</td></tr>
+          <tr><td class="name-cell mono-cell">goal</td><td class="desc">What you're working toward</td><td class="desc">Wants to understand transformers properly</td></tr>
+          <tr><td class="name-cell mono-cell">decision</td><td class="desc">Choices already made, so they aren't relitigated</td><td class="desc">Chose SQLite over Postgres for v1</td></tr>
+          <tr><td class="name-cell mono-cell">skill</td><td class="desc">What you already know, so it doesn't over-explain</td><td class="desc">Strong in Python, new to Rust</td></tr>
+        </tbody>
+      </table>
+    </div></div>
+
+    <h3>Why recall is deliberately simple</h3>
+    <p>
+      Relevance is keyword overlap with the recent conversation, plus a small bonus
+      for memories that have proved useful before. No embeddings, no vector database.
+    </p>
+    <p>
+      That is a considered choice rather than a shortcut. At personal scale —
+      hundreds of memories, not millions — lexical overlap is roughly as accurate as
+      embeddings and has one decisive advantage: <strong>you can look at a memory and
+      understand why it surfaced.</strong> A memory system whose behaviour is
+      inexplicable is one you stop trusting, and an untrusted memory is worse than
+      none. Swap in embeddings past a few thousand facts; nothing else has to change.
+    </p>
+  </section>
+
+  <section id="brains">
+    <div class="sec-mark"><span class="sec-num">06</span></div>
+    <h2>Backends</h2>
+    <p class="lead">
+      The brain is swappable. The app never learns which one is running, so changing
+      models is a config line rather than a refactor — which matters, because models
+      turn over every few months and you don't want that churn reaching your code.
+    </p>
+
+    <div class="table-frame"><div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Backend</th><th>Cost</th><th>Offline</th><th>Setup</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name-cell">Demo</td><td><span class="tag tag-free">free</span></td><td class="yes">yes</td><td class="desc">None. Scripted replies so the product runs the moment you clone it.</td></tr>
+          <tr><td class="name-cell">Ollama</td><td><span class="tag tag-free">free</span></td><td class="yes">yes</td><td class="desc">Install, then <code>ollama pull llama3.2</code>. The recommended default.</td></tr>
+          <tr><td class="name-cell">Groq</td><td><span class="tag tag-free">free tier</span></td><td class="no">no</td><td class="desc">Free key, no card. Hosted open models, very fast.</td></tr>
+          <tr><td class="name-cell">Gemini</td><td><span class="tag tag-free">free tier</span></td><td class="no">no</td><td class="desc">Free key from Google AI Studio.</td></tr>
+          <tr><td class="name-cell">OpenAI-compatible</td><td><span class="tag tag-paid">varies</span></td><td class="no">depends</td><td class="desc">One implementation covers LM Studio, vLLM, llama.cpp, OpenRouter, Together and more — they all copied the same wire format.</td></tr>
+          <tr><td class="name-cell">Claude</td><td><span class="tag tag-paid">paid</span></td><td class="no">no</td><td class="desc">The strongest reasoning available, if you want one paid option.</td></tr>
+          <tr><td class="name-cell">Your own model</td><td><span class="tag tag-free">free</span></td><td class="yes">yes</td><td class="desc">The transformer you trained yourself in <code>scratch/</code>. Will produce nonsense — that's the lesson.</td></tr>
+        </tbody>
+      </table>
+    </div></div>
+
+    <h3>Fallback chain</h3>
+    <p>
+      Set more than one and Praxis health-checks them in order. If Ollama is down
+      because you closed the laptop, it moves to Groq and tells you why in a toast
+      rather than failing the turn. An assistant that degrades is a better product
+      than one that dies.
+    </p>
+
+    <h3>Why tool calling uses text, not the native API</h3>
+    <p>
+      Every provider has its own function-calling format, and most local models have
+      none at all. Praxis uses a text protocol instead — the model emits a call
+      block, Praxis catches it mid-stream and runs it. Native calling is better where
+      it exists; this works <em>identically</em> on Ollama, Groq, Gemini, Claude and a
+      model you trained last Tuesday, which for a project about owning your own AI is
+      the more valuable property.
+    </p>
+  </section>
+
+  <section id="interface">
+    <div class="sec-mark"><span class="sec-num">07</span></div>
+    <h2>Interface</h2>
+    <p class="lead">
+      One CSS file and one JavaScript file, no framework and no build step. Small
+      enough to read end to end.
+    </p>
+
+    <div class="table-frame"><div class="table-scroll">
+      <table>
+        <thead><tr><th>Feature</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td class="name-cell">Live tool calls</td><td class="desc">Each call appears as it runs, with a spinner, then a result you can expand. You watch it work instead of waiting through a pause.</td></tr>
+          <tr><td class="name-cell">Command palette</td><td class="desc"><code>⌘K</code> for every action and every mode. <code>⌘N</code> new chat, <code>⌘M</code> memory, <code>⌘,</code> settings.</td></tr>
+          <tr><td class="name-cell">Conversations</td><td class="desc">Auto-titled from your first message, searchable across all message bodies, pinnable, deletable.</td></tr>
+          <tr><td class="name-cell">Memory panel</td><td class="desc">Every stored fact, with its category and how often it has been used. Edit in place, delete individually or all at once.</td></tr>
+          <tr><td class="name-cell">Files</td><td class="desc">Drag anything onto the window. Text, code, CSV, Markdown and PDF are parsed and attached.</td></tr>
+          <tr><td class="name-cell">Prompt inspector</td><td class="desc">Read the exact system prompt for the current mode, with its token count and which memories made it in.</td></tr>
+          <tr><td class="name-cell">Edit &amp; regenerate</td><td class="desc">Edit any message of yours and re-run from there; the old branch is cleanly discarded.</td></tr>
+          <tr><td class="name-cell">Export</td><td class="desc">Any conversation to Markdown in one click. Nothing here is designed to trap your data.</td></tr>
+          <tr><td class="name-cell">Themes</td><td class="desc">Light and dark, both built from the same tokens rather than one being an inversion of the other.</td></tr>
+        </tbody>
+      </table>
+    </div></div>
+  </section>
+
+  <section id="build">
+    <div class="sec-mark"><span class="sec-num">08</span></div>
+    <h2>How it's built</h2>
+    <p class="lead">
+      Python and SQLite on the server, plain DOM in the browser. No build step
+      anywhere.
+    </p>
+
+    <div class="filemap">
+      <div class="fgroup">The assistant</div>
+      <div class="frow"><span class="fpath">praxis/identity.py</span><span class="fdesc">The specification, compiled into a system prompt</span></div>
+      <div class="frow"><span class="fpath">praxis/modes.py</span><span class="fdesc">Ten behavioural overlays</span></div>
+      <div class="frow"><span class="fpath">praxis/agent.py</span><span class="fdesc">The loop — compose, recall, stream, intercept, execute</span></div>
+      <div class="frow"><span class="fpath">praxis/providers.py</span><span class="fdesc">Seven backends behind one interface, with fallback</span></div>
+      <div class="frow"><span class="fpath">praxis/store.py</span><span class="fdesc">Conversations, messages and memory in SQLite</span></div>
+      <div class="frow"><span class="fpath">praxis/tools/</span><span class="fdesc">The nine tools, one file each</span></div>
+
+      <div class="fgroup">The product</div>
+      <div class="frow"><span class="fpath">server.py</span><span class="fdesc">The API — streaming chat, conversations, memory, uploads</span></div>
+      <div class="frow"><span class="fpath">web/index.html</span><span class="fdesc">Landing page</span></div>
+      <div class="frow"><span class="fpath">web/chat.html</span><span class="fdesc">The app</span></div>
+      <div class="frow"><span class="fpath">web/static/app.js</span><span class="fdesc">Client — streaming, markdown, palette, drawers</span></div>
+
+      <div class="fgroup">Understanding it</div>
+      <div class="frow"><span class="fpath">scratch/model.py</span><span class="fdesc">A GPT from zero — attention, MLP, residuals, sampling</span></div>
+      <div class="frow"><span class="fpath">scratch/train.py</span><span class="fdesc">Train it on your CPU in about fifteen minutes</span></div>
+      <div class="frow"><span class="fpath">finetune/train_lora.py</span><span class="fdesc">LoRA on an open model, sized for a free Colab GPU</span></div>
+    </div>
+
+    <p>
+      That last group is the part most personal-AI projects skip. The transformer in
+      <code>scratch/model.py</code> is the same architecture family as GPT-4, Claude
+      and Gemini — not a simplified teaching version. Train it and you get convincing
+      Shakespearean gibberish from 800,000 parameters, which teaches you more about
+      what these systems are than any amount of reading.
+    </p>
+  </section>
+
+  <section id="run">
+    <div class="sec-mark"><span class="sec-num">09</span></div>
+    <h2>Running it</h2>
+    <p class="lead">
+      It works the moment you clone it, on the demo backend. Giving it a real brain
+      takes two more commands.
+    </p>
+
+    <div class="term">
+<pre><span class="rem"># 1 · install and run — works out of the box</span>
+pip install -r requirements.txt
+python server.py                  <span class="rem">→ localhost:8000</span>
+
+<span class="rem"># 2 · give it a real brain (free, local, offline)</span>
+<span class="cmd">curl -fsSL https://ollama.com/install.sh | sh</span>
+<span class="cmd">ollama pull llama3.2</span>
+echo "PROVIDER=ollama" &gt; .env
+
+<span class="rem"># 3 · restart. that's the whole setup.</span>
+python server.py                  <span class="good">✓ ready</span></pre>
+    </div>
+
+    <p>
+      Everything else is one file. <code>.env</code> holds the backend, your name,
+      the default mode, which tools are enabled, and the limits. Rename the whole
+      product by changing <code>BRAND_NAME</code>. Your conversations and memory live
+      in <code>data/praxis.db</code> — back it up by copying it.
+    </p>
+  </section>
+
+  <section id="limits">
+    <div class="sec-mark"><span class="sec-num">10</span></div>
+    <h2>What it isn't</h2>
+    <p class="lead">
+      A manual that only lists strengths isn't a manual. These are real, and worth
+      knowing before you rely on it.
+    </p>
+
+    <div class="limits">
+      <div class="limit">
+        <h4>It is not a frontier model</h4>
+        <p>Praxis is the scaffolding — identity, memory, tools, interface. The
+           intelligence is whatever backend you point it at. On a 3-billion-parameter
+           local model it will be noticeably less capable than ChatGPT, because it
+           is. That's the honest trade for free and offline.</p>
+      </div>
+      <div class="limit">
+        <h4>Tool calling depends on the model</h4>
+        <p>The text protocol works everywhere, but a small model will sometimes
+           forget the syntax or call a tool it didn't need. Larger models follow it
+           reliably. The six-round ceiling exists precisely because small models get
+           stuck in loops.</p>
+      </div>
+      <div class="limit">
+        <h4>Memory recall is lexical</h4>
+        <p>Ask about something you described in completely different words and the
+           keyword match may miss it. That is the price of being able to explain why
+           a memory surfaced, and it becomes the wrong trade past a few thousand
+           facts.</p>
+      </div>
+      <div class="limit">
+        <h4>Search is scraping by default</h4>
+        <p>DuckDuckGo is free precisely because it isn't an API. If the page layout
+           changes it breaks, and some networks block it. Praxis says so plainly when
+           it fails rather than going quiet — and Brave, Tavily or SearXNG are one
+           config line away.</p>
+      </div>
+      <div class="limit">
+        <h4>Single user, no auth</h4>
+        <p>It binds to localhost and has no accounts, no login and no permissions.
+           That is correct for a personal tool on your own machine and completely
+           wrong for anything exposed to a network. Don't put it on the open internet
+           as-is.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="sig-dots">
+      <span style="background: var(--red)"></span>
+      <span style="background: var(--blue)"></span>
+      <span style="background: var(--green)"></span>
+      <span style="background: var(--yellow)"></span>
+    </span>
+    <span>PRAXIS v1.0.0 · FIELD MANUAL</span>
+    <span>THINK · CHALLENGE · BUILD · VERIFY · EXECUTE</span>
+  </footer>
+
+  </main>
+</div>
+</div>
