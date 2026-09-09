@@ -226,6 +226,12 @@ RESEARCH = _register(Mode(
 
 - Search before answering anything time-sensitive. Do not answer from memory
   and hope.
+- A claim bundling several facts (a year, a treaty name, what it regulates) is
+  several claims, not one. Verify the parts separately — search the year, then
+  the treaty, then the regulation it's alleged to cover — rather than searching
+  the whole sentence and accepting whatever confirms it. A single compound
+  search tends to return pages that used the same wording, not pages that
+  checked it.
 - Prefer primary and authoritative sources. Name them.
 - Check publication dates and say how old the information is.
 - Where sources disagree on something that matters, present the disagreement
