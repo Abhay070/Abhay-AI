@@ -302,6 +302,7 @@
   <span class="nav-name">Praxis</span>
   <div class="nav-links">
     <a href="#what">What it is</a>
+    <a href="#council">Council</a>
     <a href="#modes">Modes</a>
     <a href="#tools">Tools</a>
     <a href="#memory">Memory</a>
@@ -422,6 +423,106 @@
         <h3>Nothing hidden</h3>
         <p>Read the exact system prompt it was given. Watch every tool call as it
            runs. See which memories made it into the context window.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<section id="council" class="sep">
+  <div class="wrap">
+    <div class="eyebrow"><span class="bead" style="background:var(--blue)"></span> The council</div>
+    <h2>Why ask one model when you can ask three?</h2>
+    <p class="lede">
+      Every model has its own blind spots. Ask three the same hard question and
+      they fail in <em>different</em> places — one invents a date, one misses the
+      sarcasm, one gets it right. Most assistants throw that disagreement away.
+      Praxis spends it.
+    </p>
+
+    <div class="lcd-panel">
+      <div class="lcd-bar">
+        <span class="lcd-dot" style="background:var(--red)"></span>
+        <span class="lcd-dot" style="background:var(--yellow)"></span>
+        <span class="lcd-dot" style="background:var(--green)"></span>
+        <span class="lcd-title">council · one question, three answers, one winner</span>
+      </div>
+      <div class="lcd-screen">
+<pre><span class="dim">you ›</span> <span class="hi">Who was Polk's VP, and what tie did he break?</span>
+
+  A  llama-3.3-70b   <span class="hi">George M. Dallas — Walker Tariff, 1846</span>   1.9s  <span class="ok">✓</span>
+  B  gemini-2.0      <span class="hi">Dallas, on an 1846 tariff bill</span>           1.2s  <span class="ok">✓</span>
+  C  llama3.2        <span class="dim">"I couldn't find any information…"</span>       2.4s  <span class="ok">✓</span>
+
+  <span class="dim">judging (blind — no model names on the ballot)</span>
+
+<span class="hi">Winner A</span> <span class="dim">— names both the person and the specific
+legislation; C hedges without having looked.</span></pre>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card t-blue">
+        <div class="card-icon">⚖</div>
+        <h3>The ballot is blind</h3>
+        <p>The judge sees answers labelled A, B, C — never which model wrote
+           which. It cannot vote for a brand it recognises, only for the better
+           answer.</p>
+      </div>
+      <div class="card t-green">
+        <div class="card-icon">⚡</div>
+        <h3>Race, when speed matters</h3>
+        <p>All members at once, first usable answer wins. A rate-limited or
+           sleeping backend stops being your outage.</p>
+      </div>
+      <div class="card t-yellow">
+        <div class="card-icon">↗</div>
+        <h3>Cascade, when cost matters</h3>
+        <p>Cheap model first. It escalates to the strong one only when the
+           answer actually looks weak — most questions never need it.</p>
+      </div>
+      <div class="card t-red">
+        <div class="card-icon">◉</div>
+        <h3>No silent coin flips</h3>
+        <p>If the judge fails or returns nonsense, the fallback is a stated
+           heuristic that prefers honest hedging over confident length — and it
+           tells you that's what happened.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="verify" class="sep">
+  <div class="wrap">
+    <div class="eyebrow"><span class="bead" style="background:var(--green)"></span> Verification</div>
+    <h2>It checks its own homework</h2>
+    <p class="lede">
+      Ask for four sentences with no letter E and most models produce something
+      confident and wrong. They cannot count their own letters — text is
+      generated in tokens, several characters at a time, with no step that
+      inspects them. So Praxis doesn't ask them to.
+    </p>
+
+    <div class="grid g3">
+      <div class="card t-red">
+        <div class="card-icon">✕</div>
+        <h3>The answer comes back</h3>
+        <p>A checker reads it in microseconds: <code>'e' appears 15×, 's'
+           appears 16×</code>, and three descriptions are 7 words, not 8.</p>
+      </div>
+      <div class="card t-yellow">
+        <div class="card-icon">↻</div>
+        <h3>It gets sent back</h3>
+        <p>The model is handed the exact defects — not "try again", but which
+           letters, which items, which counts. Repairing a named fault is easy.
+           Counting was the impossible part.</p>
+      </div>
+      <div class="card t-green">
+        <div class="card-icon">✓</div>
+        <h3>Or it admits it</h3>
+        <p>After a bounded number of attempts it says what it couldn't meet.
+           An undisclosed violation dressed up as compliance is the worse
+           failure.</p>
       </div>
     </div>
   </div>

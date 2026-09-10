@@ -16,7 +16,9 @@ with sync_playwright() as p:
     # ---------- LANDING PAGE ----------
     pg.goto("http://127.0.0.1:8000/", wait_until="networkidle"); pg.wait_for_timeout(700)
     nav = pg.locator(".nav-links a")
-    check("landing: nav links present", nav.count() == 5, f"{nav.count()} links")
+    # Count is not the invariant — every link resolving is. Hard-coding the
+    # number just breaks the test each time a section is added.
+    check("landing: nav links present", nav.count() >= 5, f"{nav.count()} links")
     ok_anchor = True
     for i in range(nav.count()):
         href = nav.nth(i).get_attribute("href")
@@ -95,8 +97,18 @@ with sync_playwright() as p:
     pg.locator(".conv").first.hover(); pg.wait_for_timeout(200)
     pins = pg.locator(".conv-actions button")
     check("btn: conversation pin/delete present", pins.count() >= 2)
-    pins.nth(0).click(); pg.wait_for_timeout(700)
-    check("btn: pin works", pg.locator(".conv-group").first.inner_text().strip().lower() == "pinned",
+    # Pin TOGGLES, and the database persists between runs — so assert it
+    # changed state, not that it reached a particular state. Asserting
+    # "Pinned" passes on a clean database and fails on the second run.
+    before = pg.locator(".conv-group").first.inner_text().strip().lower()
+    pins.nth(0).click(); pg.wait_for_timeout(800)
+    after = pg.locator(".conv-group").first.inner_text().strip().lower()
+    check("btn: pin toggles", before != after, f"{before} -> {after}")
+    pins_again = pg.locator(".conv").first
+    pins_again.hover(); pg.wait_for_timeout(200)
+    pg.locator(".conv-actions button").nth(0).click(); pg.wait_for_timeout(700)
+    check("btn: pin toggles back",
+          pg.locator(".conv-group").first.inner_text().strip().lower() == before,
           pg.locator(".conv-group").first.inner_text())
 
     pg.click("#newChat"); pg.wait_for_timeout(400)
