@@ -197,11 +197,11 @@ footer{grid-column:1/-1;border-top:2px solid var(--ink);padding:20px 0 60px;
   </h1>
   <p class="strap">praxis (n.) — the process by which theory becomes action.<br>Think · Challenge · Build · Verify · Execute</p>
   <dl class="plate">
-    <div><dt>Lines</dt><dd>10,766<small>Python + JS</small></dd></div>
+    <div><dt>Lines</dt><dd>12,180<small>Python + JS</small></dd></div>
     <div><dt>Modes</dt><dd>10<small>9 enforced</small></dd></div>
     <div><dt>Tools</dt><dd>15<small>14 on by default</small></dd></div>
     <div><dt>Backends</dt><dd>7<small>one interface</small></dd></div>
-    <div><dt>Checks</dt><dd>122<small>+ 100 questions</small></dd></div>
+    <div><dt>Checks</dt><dd>160<small>+ 100 questions</small></dd></div>
   </dl>
 </header>
 
@@ -226,6 +226,7 @@ footer{grid-column:1/-1;border-top:2px solid var(--ink);padding:20px 0 60px;
     <li><a href="#s16"><b>16</b>Incident log</a></li>
     <li><a href="#s17"><b>17</b>Runbook</a></li>
     <li><a href="#s18"><b>18</b>Limits</a></li>
+    <li><a href="#s19"><b>19</b>Philosophy, made mechanical</a></li>
   </ol>
 </nav>
 
@@ -238,7 +239,7 @@ footer{grid-column:1/-1;border-top:2px solid var(--ink);padding:20px 0 60px;
   <p>What Praxis adds that a raw API call does not: a compiled identity that survives every turn, ten working modes with promises that are mechanically enforced, a constraint checker that catches what a model provably cannot check about its own output, a tool protocol that works on every backend including local ones, and a refusal to ever present a failure as a success.</p>
   <div class="note">
     <span class="tag">The governing rule</span>
-    <p>A blank reply that reports success is the worst failure this product can have — the user cannot diagnose it, work around it, or even tell that something went wrong. Every mechanism in §7, §9 and §16 exists to make silence impossible.</p>
+    <p>Three ways to fail, held equally bad: <b>hallucination</b> (confidently false), <b>paralysis</b> (refusing to help because it cannot guarantee perfection), and <b>false confidence</b> (a definitive answer on weak evidence). Most assistants guard only against the first and become useless in the second way while congratulating themselves. Praxis attacks all three — and a blank reply that reports success is the worst case of all, because the user cannot even tell something went wrong.</p>
   </div>
 </section>
 
@@ -688,13 +689,42 @@ python tests/test_interface.py       <i># 39, real browser (needs a server up)</
   </div>
 </section>
 
+
+<section id="s19">
+  <h2><span class="n">§19</span>Philosophy, made mechanical</h2><div class="rule"></div>
+  <p class="lede">A principle stated in a prompt is a hope. A principle a checker enforces is a property. This is the set of behaviours the product now guarantees rather than requests, each pinned by a test that fails if it regresses.</p>
+
+  <h3>Don't stall</h3>
+  <p>An answer that stops at "I cannot confidently determine this" and leaves the user where they started is a failure here, held as costly as being wrong. <code>praxis/momentum.py</code> detects the stop — a signal that the question cannot be settled <em>and</em> no way forward — and repairs it through the same loop that repairs a broken constraint, so the answer keeps its honesty but gains the next step: what to check, what to measure, what to assume meanwhile. An honest answer that already moves ("I'd take Postgres, though verify the throughput") passes untouched, and a safety refusal is exempt in the checker itself — a repair loop that argues with a refusal is one that eventually gets a refusal overturned.</p>
+
+  <h3>Don't crown a bad field</h3>
+  <p>Three weak answers do not become one good answer by being compared. The council judge may now return <code>NONE</code>, the heuristic path checks the same thing so turning the judge off does not turn the honesty off with it, and the answer carries <b>NO CONSENSUS — insufficient confidence</b> above the best available answer, which is still shown. What it deliberately cannot catch is a confident fabrication among the candidates: detecting that a specific, assertive answer is false needs the ground truth the council does not have, and the code says so rather than pretending otherwise.</p>
+
+  <h3>Two layers</h3>
+  <p>Verification runs in the background. Normal view — the default — shows a quiet activity line (Thinking, Comparing the answers, Making sure it gives you a next step) and then the answer. Debug view shows every tool, check and verdict. The machinery is identical; the toggle only decides whether it is on screen, and the choice persists per browser. Things the user must see — the no-consensus label, a failed constraint — live in the answer itself and appear in both.</p>
+
+  <h3>Outside content is data, never instructions</h3>
+  <p>Tool results, fetched pages and uploaded files are fenced by <code>praxis/untrusted.py</code> with a boundary that states what they are and that they cannot give instructions — with the user winning any contradiction. The fence marker is random per request and stripped from the body, so content cannot close it and write outside. Text shaped like an attempt to give orders is flagged to the interface. None of this makes injection impossible, and the module says so; it removes the easy version and does it in one place.</p>
+
+  <h3>Memory with provenance and supersession</h3>
+  <p>Every memory records where it came from, a confidence, and whether the user confirmed it — a confirmed fact reads differently from a 70%-inferred guess. A changed preference retires the old one instead of both contradicting each other in the prompt forever: "I prefer dark mode now" supersedes "I prefer light mode", conservatively (same subject, most words shared, never on facts), always with the reason recorded, and never by deletion — the retired memory is struck through in the panel with a restore button. Superseded memories are filtered out of the prompt, so recall spends context only on what still holds.</p>
+
+  <h3>Reliability, measured</h3>
+  <p><code>tests/test_reliability.py</code> injects seven real faults — a model that only thinks, a rate limit that never lifts, a mid-stream crash, an unsatisfiable constraint, a stall, an all-weak council, a dead primary — and scores how many were handled, where handled means recovered <em>or</em> reported honestly. Only hiding a fault counts as unhandled. This is the fourth axis alongside machinery, structure and substance, and it is the one a raw model has no answer to. Currently 7/7.</p>
+
+  <div class="note">
+    <span class="tag">The hierarchy, in one line</span>
+    <p>Be useful. Be decisive. Be honest. Be recoverable. Be transparent when it matters. Honesty is the floor, not the personality — the user should not have to think about verification, only find the thing dependable. <b>Don't lie. Don't stall. Keep moving.</b></p>
+  </div>
+</section>
+
 </main>
 
 <footer>
   <span>Praxis v0.7</span>
   <span>Abhay070/Abhay-AI</span>
-  <span>10,766 lines</span>
-  <span>122 checks + 100 questions</span>
+  <span>12,180 lines</span>
+  <span>160 checks + 100 questions</span>
 </footer>
 
 </div>

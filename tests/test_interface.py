@@ -77,6 +77,7 @@ with sync_playwright() as p:
 
     pg.click("#openMemory"); pg.wait_for_timeout(800)
     check("btn: memory drawer opens", pg.locator(".drawer").count() == 1)
+    pg.evaluate("fetch('/api/memories',{method:'DELETE'})"); pg.wait_for_timeout(200)
     pg.evaluate("async () => {\n      await fetch('/api/memories', {method:'POST', headers:{'Content-Type':'application/json'},\n        body: JSON.stringify({content:'I prefer light mode', category:'preference'})});\n      await fetch('/api/memories', {method:'POST', headers:{'Content-Type':'application/json'},\n        body: JSON.stringify({content:'I prefer dark mode now', category:'preference'})});\n    }")
     pg.evaluate("closeDrawers()"); pg.wait_for_timeout(150)
     pg.click("#openMemory"); pg.wait_for_timeout(700)
@@ -259,6 +260,8 @@ try:
                     f"http://127.0.0.1:8000/api/conversations/{c['id']}",
                     method="DELETE")
                 urllib.request.urlopen(req).read()
+    urllib.request.urlopen(urllib.request.Request(
+        "http://127.0.0.1:8000/api/memories", method="DELETE")).read()
 except Exception as e:
     print(f"(cleanup skipped: {type(e).__name__})")
 
