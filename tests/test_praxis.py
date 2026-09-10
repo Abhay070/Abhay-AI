@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from praxis import constraints, council, modes                      # noqa: E402
+from praxis import constraints, contracts, council, modes                      # noqa: E402
 from praxis.agent import Agent                                      # noqa: E402
 from praxis.config import Settings                                  # noqa: E402
 from praxis.identity import build_system_prompt                     # noqa: E402
@@ -35,6 +35,9 @@ from praxis.providers import Provider, from_spec, describe          # noqa: E402
 from praxis.store import Store                                      # noqa: E402
 from praxis.tools import REGISTRY, execute, parse_calls, strip_calls  # noqa: E402
 from praxis.tools.calculate import calculate                        # noqa: E402
+from praxis.tools.integrations import (                             # noqa: E402
+    _parse_arxiv, _parse_dictionary, _parse_exchange, _parse_github,
+    _parse_hn, _parse_wikipedia)
 
 
 # --- helpers ---------------------------------------------------------------
@@ -200,6 +203,112 @@ def test_cascade_weakness_signals():
 def test_members_dedupe_and_skip_unknown():
     members = council.build_members("demo, demo, nonsense-backend, demo")
     assert [describe(m) for m in members] == ["demo"], [describe(m) for m in members]
+
+
+# --- mode contracts --------------------------------------------------------
+
+def test_direct_mode_is_held_to_its_word_limit():
+    assert not contracts.check("direct", "Raise the price. Your costs moved, it didn't.")
+    long_answer = "word " * 300
+    breaches = contracts.check("direct", long_answer)
+    assert breaches and "150 words" in breaches[0].detail, breaches
+
+
+def test_direct_mode_rejects_throat_clearing():
+    b = contracts.check("direct", "Great question! Here is the answer.")
+    assert b and "throat-clearing" in b[0].detail, b
+
+
+def test_brief_mode_requires_all_five_headings():
+    good = ("**Situation** X. **Problem** Y. **Options** A or B. "
+            "**Recommendation** A. **Next action** Call them Monday.")
+    assert not contracts.check("brief", good)
+    assert contracts.check("brief", "Some thoughts about the situation.")
+
+
+def test_reality_mode_requires_a_verdict():
+    assert not contracts.check("reality", "Thin moat. VERDICT: TEST FIRST. Because…")
+    assert contracts.check("reality", "It is a decent idea with some risk.")
+
+
+def test_socratic_mode_must_ask_not_tell():
+    assert not contracts.check("socratic", "What happens when the scope ends?")
+    assert contracts.check("socratic", "The pointer is freed when the scope ends.")
+
+
+def test_modes_without_contracts_never_breach():
+    for mode in ("standard", "teacher", "build", "research", "exam"):
+        result = contracts.check(mode, "Any answer at all, of any shape.")
+        assert mode == "exam" or result == [], f"{mode} falsely breached: {result}"
+
+
+def test_contract_repair_prompt_names_the_broken_promise():
+    b = contracts.check("reality", "Seems fine to me.")
+    text = contracts.repair_prompt("reality", b)
+    assert "PURSUE" in text and "REALITY" in text, text[:160]
+
+
+def test_a_broken_check_cannot_break_the_turn():
+    """A promise whose check raises must be skipped, not propagated."""
+    bad = contracts.Promise("explodes", lambda t: 1 / 0, "n/a")
+    contracts.CONTRACTS["__test__"] = [bad]
+    try:
+        assert contracts.check("__test__", "anything") == []
+    finally:
+        del contracts.CONTRACTS["__test__"]
+
+
+# --- integrations (parsers, tested against fixtures) -----------------------
+
+def test_wikipedia_parser():
+    r = _parse_wikipedia({"title": "Walker Tariff", "extract": "A tariff from 1846.",
+                          "content_urls": {"desktop": {"page": "https://x"}}})
+    assert r.ok and "Walker Tariff" in r.output
+    assert _parse_wikipedia({"title": "Mercury", "type": "disambiguation",
+                             "extract": "several"}).data.get("disambiguation")
+    assert not _parse_wikipedia({"title": "X", "extract": ""}).ok
+
+
+def test_exchange_parser_computes_the_total():
+    r = _parse_exchange({"base": "USD", "date": "2026-09-10",
+                         "rates": {"INR": 88.42}}, 250, "INR")
+    assert r.ok and r.data["result"] == 22105.0, r.data
+    assert not _parse_exchange({"base": "USD", "date": "d", "rates": {}}, 1, "XYZ").ok
+
+
+def test_github_parser_flags_archived_repos():
+    assert "Archived" in _parse_github({"full_name": "a/b", "archived": True}).output
+    assert not _parse_github({}).ok
+
+
+def test_hacker_news_parser_falls_back_to_item_links():
+    r = _parse_hn([{"title": "No URL story", "score": 10, "id": 42}], 5)
+    assert "item?id=42" in r.output, r.output
+    assert not _parse_hn([], 5).ok
+
+
+def test_dictionary_and_arxiv_parsers_handle_empty_and_malformed():
+    assert not _parse_dictionary([]).ok
+    assert not _parse_arxiv("<not xml", 3).ok
+    assert not _parse_arxiv('<feed xmlns="http://www.w3.org/2005/Atom"/>', 3).ok
+    good = ('<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+            '<id>http://arxiv.org/abs/1706.03762</id><title>Attention</title>'
+            '<summary>Text.</summary><published>2017-06-12T00:00:00Z</published>'
+            '<author><name>Vaswani</name></author></entry></feed>')
+    assert _parse_arxiv(good, 3).ok
+
+
+def test_every_integration_fails_cleanly_offline():
+    """Network is blocked in CI; each tool must return a result, never raise."""
+    from praxis.tools.integrations import (arxiv, dictionary, exchange,
+                                           github_repo, hacker_news, wikipedia)
+    for call in (lambda: wikipedia("Test"), lambda: dictionary("test"),
+                 lambda: exchange("1", "USD", "EUR"),
+                 lambda: github_repo("python/cpython"),
+                 lambda: hacker_news("2"), lambda: arxiv("test")):
+        result = call()
+        assert hasattr(result, "ok"), "tool did not return a ToolResult"
+        assert isinstance(result.output, str) and result.output
 
 
 # --- providers -------------------------------------------------------------
@@ -381,6 +490,28 @@ def test_agent_stops_a_runaway_tool_loop():
         calls = sum(1 for e in events if e.type == "tool_call")
         assert calls <= 4, f"loop was not bounded: {calls} calls"
         assert any(e.type == "done" for e in events), "never terminated"
+    finally:
+        os.remove(path)
+
+
+def test_agent_repairs_a_broken_mode_promise():
+    store, path = fresh_store()
+    try:
+        agent = Agent(store, Settings(enable_constraint_check=False,
+                                      max_constraint_retries=2))
+        cid = store.create_conversation("t", "reality")
+        store.add_message(cid, "user", "is my idea good")
+        provider = Scripted("m",
+                            "It seems like a reasonable idea overall.",
+                            "Thin moat. VERDICT: TEST FIRST. Run a pricing test.")
+
+        async def go():
+            return [e async for e in agent.run(provider, cid,
+                                               store.get_messages(cid), "reality")]
+        events = asyncio.run(go())
+        assert any(e.type == "mode_breach" for e in events), [e.type for e in events]
+        assert "VERDICT" in store.get_messages(cid)[-1]["content"]
+        assert provider.calls == 2, provider.calls
     finally:
         os.remove(path)
 

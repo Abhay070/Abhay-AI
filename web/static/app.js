@@ -13,6 +13,7 @@ const state = {
   modes: [],
   strategy: 'single',
   strategies: [],
+  promises: {},
   council: null,
   tools: [],
   providers: [],
@@ -218,6 +219,7 @@ function applyMode(key) {
   $('modeIcon').textContent = m.icon;
   $('modeLabel').textContent = m.label;
   buildModeMenu();
+  updatePromiseChip();
 }
 
 /* --- strategy (how many models answer) ------------------------------------ */
@@ -249,6 +251,20 @@ function applyStrategy(key) {
   $('strategyIcon').textContent = s.icon;
   $('strategyLabel').textContent = s.label;
   buildStrategyMenu();
+}
+
+// Show what this mode has actually committed to, when it has committed to
+// anything checkable. A promise nobody can see is a promise nobody can hold
+// you to.
+function updatePromiseChip() {
+  const chip = $('promiseChip');
+  if (!chip) return;
+  const p = (state.promises && state.promises[state.mode]) || [];
+  if (!p.length) { chip.classList.add('hidden'); return; }
+  chip.classList.remove('hidden');
+  chip.textContent = '✓ ' + p.length + ' checked';
+  chip.title = 'This mode is held to:\n· ' + p.join('\n· ') +
+               '\nIf the answer breaks one, it is rewritten automatically.';
 }
 
 /* --- conversations -------------------------------------------------------- */
@@ -366,6 +382,7 @@ function renderEmpty() {
 }
 
 function renderThread() {
+  updateTokenMeter();
   const inner = $('threadInner');
   inner.innerHTML = '';
   if (!state.messages.length) { renderEmpty(); return; }
@@ -386,6 +403,13 @@ function messageNode(m, index) {
   }
   node.appendChild(head);
 
+  if (m.breach) {
+    const n = el('div', 'mode-breach-note');
+    n.innerHTML = '<span class="ic">↻</span><span>Rewritten — ' +
+      escapeHtml(m.breach.mode) + ' mode broke: ' +
+      escapeHtml(m.breach.broke.join(', ')) + '</span>';
+    node.appendChild(n);
+  }
   if (m.council) node.appendChild(councilNode(m.council));
   if (m.cascade) node.appendChild(cascadeNode(m.cascade));
 
@@ -633,6 +657,16 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       if (d.notes && d.notes.length) {
         toast('Using ' + d.provider_label + ' — ' + d.notes[0]);
       }
+      state.promises = state.promises || {};
+      state.promises[d.mode] = d.promises || [];
+      updatePromiseChip();
+      break;
+
+    case 'mode_breach':
+      assistant.breach = d;
+      assistant.content = '';
+      body.innerHTML = '';
+      toast(d.mode + ' mode broke its promise — rewriting');
       break;
 
     case 'token':
@@ -1002,6 +1036,226 @@ function openPalette() {
   input.focus();
 }
 
+/* --- slash commands -------------------------------------------------------
+   Typing "/" in the composer opens a filtered command list. Faster than the
+   palette for things you do mid-sentence, and discoverable — the placeholder
+   says so, which the palette never could. */
+
+function slashCommands() {
+  const cmds = [
+    { cmd: '/new',     desc: 'Start a new chat',        run: () => newChat() },
+    { cmd: '/memory',  desc: 'Open memory',             run: () => openMemory() },
+    { cmd: '/settings',desc: 'Open settings',           run: () => openSettings() },
+    { cmd: '/export',  desc: 'Export this conversation',run: () => exportChat() },
+    { cmd: '/theme',   desc: 'Toggle light / dark',     run: () => toggleTheme() },
+    { cmd: '/keys',    desc: 'Keyboard shortcuts',      run: () => openShortcuts() },
+    { cmd: '/council', desc: 'Which models are live',   run: () => openCouncil() },
+    { cmd: '/prompt',  desc: 'Inspect the system prompt', run: () => openSettings() },
+  ];
+  for (const m of state.modes) {
+    cmds.push({ cmd: '/' + m.key, desc: 'Mode: ' + m.label + ' — ' + m.blurb,
+                run: () => { applyMode(m.key); toast('Mode: ' + m.label); } });
+  }
+  for (const s of state.strategies) {
+    cmds.push({ cmd: '/' + s.key, desc: 'Strategy: ' + s.label + ' — ' + s.blurb,
+                run: () => { applyStrategy(s.key); toast('Strategy: ' + s.label); } });
+  }
+  return cmds;
+}
+
+let slashSel = 0;
+
+function slashState() {
+  const value = $('input').value;
+  // Only a leading slash opens the menu — a URL mid-sentence must not.
+  if (!value.startsWith('/')) return null;
+  const typed = value.slice(0, value.indexOf(' ') === -1 ? undefined : value.indexOf(' '));
+  if (value.includes(' ')) return null;
+  const q = typed.toLowerCase();
+  const matches = slashCommands().filter(c => c.cmd.startsWith(q));
+  return matches.length ? { typed, matches } : null;
+}
+
+function renderSlash() {
+  const menu = $('slashMenu');
+  const st = slashState();
+  if (!st) { menu.classList.add('hidden'); return; }
+  if (slashSel >= st.matches.length) slashSel = 0;
+  menu.innerHTML = '';
+  st.matches.slice(0, 9).forEach((c, i) => {
+    const b = el('button', 'slash-item' + (i === slashSel ? ' sel' : ''));
+    b.innerHTML = '<span class="slash-cmd">' + escapeHtml(c.cmd) + '</span>' +
+                  '<span class="slash-desc">' + escapeHtml(c.desc) + '</span>';
+    b.onclick = () => runSlash(c);
+    menu.appendChild(b);
+  });
+  menu.classList.remove('hidden');
+}
+
+function runSlash(c) {
+  $('input').value = '';
+  $('input').style.height = 'auto';
+  $('slashMenu').classList.add('hidden');
+  slashSel = 0;
+  c.run();
+  $('input').focus();
+}
+
+/* --- token meter ----------------------------------------------------------
+   Rough, and labelled rough. ~4 characters per token holds well enough for
+   English to be a useful gauge and badly enough that it is never presented as
+   exact. It exists so a long conversation degrading is visible, not mysterious. */
+
+function updateTokenMeter() {
+  const chars = state.messages.reduce((n, m) => n + (m.content || '').length, 0);
+  const meter = $('tokenMeter');
+  if (!chars) { meter.classList.add('hidden'); return; }
+  const tokens = Math.round(chars / 4);
+  meter.classList.remove('hidden');
+  meter.textContent = '~' + tokens.toLocaleString() + ' tok';
+  meter.title = 'Roughly ' + tokens.toLocaleString() +
+    ' tokens of conversation so far (estimated at 4 chars/token). ' +
+    'Older turns are trimmed before sending.';
+  meter.className = 'chip token-meter' +
+    (tokens > 12000 ? ' hot' : tokens > 6000 ? ' warn' : '');
+}
+
+/* --- dictation ------------------------------------------------------------
+   Web Speech API — no library, no key, no upload where the browser does it
+   locally. Unsupported browsers get a clear message rather than a dead button. */
+
+let recognition = null;
+
+function toggleDictation() {
+  const Impl = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Impl) {
+    toast('Dictation needs Chrome or Edge — this browser has no Speech API');
+    return;
+  }
+  const btn = $('micBtn');
+  if (recognition) { recognition.stop(); return; }
+
+  recognition = new Impl();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = navigator.language || 'en-US';
+
+  const before = $('input').value;
+  recognition.onresult = (e) => {
+    let text = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) text += e.results[i][0].transcript;
+    $('input').value = (before ? before + ' ' : '') + text;
+    $('input').style.height = 'auto';
+    $('input').style.height = Math.min($('input').scrollHeight, 220) + 'px';
+  };
+  recognition.onerror = (e) => {
+    toast('Dictation error: ' + e.error);
+    btn.classList.remove('listening');
+    recognition = null;
+  };
+  recognition.onend = () => { btn.classList.remove('listening'); recognition = null; };
+  recognition.start();
+  btn.classList.add('listening');
+  toast('Listening — click the mic again to stop');
+}
+
+/* --- shortcuts sheet ------------------------------------------------------ */
+
+function openShortcuts() {
+  const groups = [
+    ['Conversation', [
+      ['Send', 'Enter'], ['New line', 'Shift Enter'], ['New chat', '⌘ N'],
+      ['Stop generating', 'Esc'],
+    ]],
+    ['Navigate', [
+      ['Command palette', '⌘ K'], ['Slash commands', '/'],
+      ['Toggle sidebar', '⌘ \\'], ['Shortcuts (this)', '?'],
+    ]],
+    ['Configure', [
+      ['Mode picker', 'click ◈'], ['Strategy picker', '⌘ J'],
+      ['Memory', '⌘ M'], ['Settings', '⌘ ,'], ['Dictate', '⌘ ⇧ V'],
+    ]],
+  ];
+  drawer('Keyboard shortcuts', (box) => {
+    const wrap = el('div', 'keys');
+    for (const [title, rows] of groups) {
+      const g = el('div', 'keys-group');
+      g.appendChild(el('h4', null, title));
+      for (const [what, key] of rows) {
+        const r = el('div', 'key-row');
+        r.appendChild(el('span', 'what', what));
+        const k = el('kbd', null, key);
+        r.appendChild(k);
+        g.appendChild(r);
+      }
+      wrap.appendChild(g);
+    }
+    box.appendChild(wrap);
+    box.appendChild(el('div', 'field-hint',
+      'On Windows and Linux, ⌘ means Ctrl.'));
+  });
+}
+
+/* --- council status ------------------------------------------------------- */
+
+async function openCouncil() {
+  drawer('Model council', async (box) => {
+    box.appendChild(el('div', 'empty-note', 'Checking members…'));
+    let data;
+    try { data = await (await fetch('/api/council')).json(); }
+    catch (e) { box.innerHTML = ''; box.appendChild(el('div','empty-note','Could not reach the server.')); return; }
+    box.innerHTML = '';
+
+    const strat = el('div', 'field');
+    strat.innerHTML = '<label>Active strategy</label>';
+    const cur = state.strategies.find(s => s.key === state.strategy);
+    const chip = el('div', 'chip chip-accent');
+    chip.textContent = (cur ? cur.icon + ' ' + cur.label : state.strategy);
+    strat.appendChild(chip);
+    strat.appendChild(el('div', 'field-hint', cur ? cur.blurb : ''));
+    box.appendChild(strat);
+
+    const live = el('div', 'field');
+    live.innerHTML = '<label>Members reachable now</label>';
+    if (!data.live.length) {
+      live.appendChild(el('div', 'empty-note',
+        'No members are reachable. Council and Race need at least one; ' +
+        'add a free Groq or Gemini key, or start Ollama.'));
+    }
+    for (const m of data.live) {
+      const row = el('div', 'chip chip-accent');
+      row.style.margin = '0 5px 5px 0';
+      row.textContent = '● ' + m;
+      live.appendChild(row);
+    }
+    box.appendChild(live);
+
+    if (data.dropped.length) {
+      const bad = el('div', 'field');
+      bad.innerHTML = '<label>Unavailable</label>';
+      for (const d of data.dropped) {
+        const row = el('div', 'chip');
+        row.style.cssText = 'margin:0 5px 5px 0;white-space:normal;text-align:left';
+        row.textContent = '○ ' + d;
+        bad.appendChild(row);
+      }
+      bad.appendChild(el('div', 'field-hint',
+        'Unreachable members are skipped automatically — they never fail a turn.'));
+      box.appendChild(bad);
+    }
+
+    const judge = el('div', 'field');
+    judge.innerHTML = '<label>Judge</label>';
+    const jc = el('div', 'chip'); jc.textContent = data.judge;
+    judge.appendChild(jc);
+    judge.appendChild(el('div', 'field-hint',
+      'The judge sees answers labelled A, B, C with no model names, so it ' +
+      'cannot favour a backend it recognises. With no judge configured, a ' +
+      'stated heuristic decides and says so.'));
+    box.appendChild(judge);
+  });
+}
+
 /* --- misc actions --------------------------------------------------------- */
 
 function toggleTheme() {
@@ -1028,6 +1282,9 @@ $('openSettings').onclick = openSettings;
 $('openPalette').onclick = openPalette;
 $('exportChat').onclick = exportChat;
 $('providerPill').onclick = openSettings;
+$('micBtn').onclick = toggleDictation;
+$('helpBtn').onclick = openShortcuts;
+$('toolChip').onclick = openSettings;
 $('stopBtn').onclick = () => { if (state.abort) state.abort.abort(); };
 $('attachBtn').onclick = () => $('fileInput').click();
 $('fileInput').onchange = (e) => {
@@ -1056,8 +1313,19 @@ const inputEl = $('input');
 inputEl.addEventListener('input', () => {
   inputEl.style.height = 'auto';
   inputEl.style.height = Math.min(inputEl.scrollHeight, 220) + 'px';
+  renderSlash();
 });
 inputEl.addEventListener('keydown', (e) => {
+  const st = slashState();
+  if (st && !$('slashMenu').classList.contains('hidden')) {
+    const n = Math.min(st.matches.length, 9);
+    if (e.key === 'ArrowDown') { slashSel = (slashSel + 1) % n; renderSlash(); e.preventDefault(); return; }
+    if (e.key === 'ArrowUp')   { slashSel = (slashSel - 1 + n) % n; renderSlash(); e.preventDefault(); return; }
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      e.preventDefault(); runSlash(st.matches[slashSel]); return;
+    }
+    if (e.key === 'Escape') { $('slashMenu').classList.add('hidden'); e.preventDefault(); return; }
+  }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
@@ -1077,6 +1345,19 @@ document.addEventListener('keydown', (e) => {
   if (meta && e.key === 'j') {
     e.preventDefault();
     $('strategyMenu').classList.toggle('hidden');
+  }
+  if (meta && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+    e.preventDefault(); toggleDictation();
+  }
+  // "?" opens shortcuts, but never while typing into a field.
+  if (e.key === '?' && !meta &&
+      !['INPUT', 'TEXTAREA'].includes((e.target.tagName || '')) &&
+      !e.target.isContentEditable) {
+    e.preventDefault(); openShortcuts();
+  }
+  // Esc stops a running generation before it closes anything.
+  if (e.key === 'Escape' && state.streaming && state.abort) {
+    state.abort.abort();
   }
   if (e.key === 'Escape') {
     closeDrawers();

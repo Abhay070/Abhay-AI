@@ -86,6 +86,9 @@ class Settings:
     # violations to repair. Models cannot count their own characters; code can.
     enable_constraint_check: bool = env_bool("ENABLE_CONSTRAINT_CHECK", True)
     max_constraint_retries: int = env_int("MAX_CONSTRAINT_RETRIES", 2)
+    # Hold a mode to the promises its own prompt makes — Direct's word limit,
+    # Brief's five headings, Reality Check's verdict. See praxis/contracts.py.
+    enable_mode_contracts: bool = env_bool("ENABLE_MODE_CONTRACTS", True)
 
     # --- the council -------------------------------------------------------
     # Several models answer the same question; the best answer wins. See

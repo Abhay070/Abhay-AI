@@ -33,6 +33,7 @@ from . import modes as modes_mod
 from . import tools as toolkit
 from .config import Settings
 from . import council as council_mod
+from . import contracts as contracts_mod
 from .constraints import correction_prompt, detect as detect_constraints
 from .constraints import verify as verify_constraints
 from .identity import build_system_prompt
@@ -405,6 +406,7 @@ class Agent:
             "memories_used": len(memories),
             "tools_available": [t.name for t in active_tools],
             "constraints": [c.description for c in constraints],
+            "promises": contracts_mod.describe(mode_key),
             "notes": notes or [],
         })
 
@@ -447,20 +449,29 @@ class Agent:
             total_rounds += out.get("rounds", 0)
             completion_chars += out.get("completion_chars", 0)
 
-            if not constraints:
-                break
-            violations = verify_constraints(final, constraints)
-            if not violations:
+            violations = verify_constraints(final, constraints) if constraints else []
+            breaches = (contracts_mod.check(mode_key, final)
+                        if self.settings.enable_mode_contracts else [])
+
+            if not violations and not breaches:
                 if attempt:
                     yield Event("constraint_ok", {"attempts": attempts})
                 break
 
+            if breaches:
+                yield Event("mode_breach", {
+                    "mode": mode_key,
+                    "broke": [b.detail for b in breaches],
+                    "attempt": attempts,
+                })
+
             if attempt >= self.settings.max_constraint_retries:
                 # Out of retries. Say so rather than passing off a broken answer
                 # as compliant — an unflagged violation is the worse failure.
-                note = ("\n\n---\n_Constraint check failed after "
-                        f"{attempts} attempts: "
-                        + "; ".join(v.detail[:120] for v in violations)
+                problems = ([v.detail[:120] for v in violations]
+                            + [f"{mode_key} mode: {b.detail}" for b in breaches])
+                note = ("\n\n---\n_Check failed after "
+                        f"{attempts} attempts: " + "; ".join(problems)
                         + ". The answer above does not meet what you asked for._")
                 final += note
                 yield Event("token", {"text": note})
@@ -470,9 +481,14 @@ class Agent:
                 })
                 break
 
+            repair = []
+            if violations:
+                repair.append(correction_prompt(violations))
+            if breaches:
+                repair.append(contracts_mod.repair_prompt(mode_key, breaches))
             working = list(messages) + [
                 {"role": "assistant", "content": final},
-                {"role": "user", "content": correction_prompt(violations)},
+                {"role": "user", "content": "\n\n".join(repair)},
             ]
 
         message_id = self.store.add_message(

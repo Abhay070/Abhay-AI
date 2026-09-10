@@ -123,4 +123,5 @@ def execute(name: str, args: dict, context: dict | None = None) -> ToolResult:
 
 
 # Importing these registers them. Order here is the order shown to the model.
-from . import calculate, timetool, memory, web, code, files  # noqa: E402,F401
+from . import (calculate, timetool, memory, web, code, files,  # noqa: E402,F401
+               integrations)

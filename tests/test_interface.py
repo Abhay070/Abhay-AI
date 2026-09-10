@@ -77,6 +77,12 @@ with sync_playwright() as p:
 
     check("btn: attach labelled", "Attach" in pg.locator("#attachBtn").inner_text())
 
+    # Back to Standard before sending. Founder mode carries a contract, and a
+    # scripted demo reply cannot honour it — the resulting rewrite would clear
+    # the tool panel and make this check about contracts rather than sending.
+    pg.click("#modeBtn"); pg.wait_for_timeout(250)
+    pg.locator("#modeMenu .mode-item").nth(0).click(); pg.wait_for_timeout(250)
+
     # send a real message so message-level buttons exist
     pg.fill("#input", "what is 1920 x 1080")
     pg.click("#sendBtn")
@@ -116,6 +122,54 @@ with sync_playwright() as p:
 
     starters = pg.locator(".starter")
     check("btn: starter cards present", starters.count() == 4)
+
+    # ---------- NEW CONTROLS ----------
+    pg.click("#helpBtn"); pg.wait_for_timeout(600)
+    check("btn: shortcuts sheet opens", pg.locator(".key-row").count() >= 10,
+          f"{pg.locator('.key-row').count()} shortcuts")
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(250)
+
+    pg.keyboard.press("?"); pg.wait_for_timeout(500)
+    check("key: ? opens shortcuts", pg.locator(".key-row").count() >= 10)
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(250)
+
+    # slash commands
+    pg.click("#input")
+    pg.fill("#input", "/")
+    pg.dispatch_event("#input", "input"); pg.wait_for_timeout(400)
+    n_slash = pg.locator(".slash-item").count()
+    check("slash: menu opens on /", n_slash > 0, f"{n_slash} commands")
+    pg.fill("#input", "/found")
+    pg.dispatch_event("#input", "input"); pg.wait_for_timeout(400)
+    check("slash: filters as you type",
+          pg.locator(".slash-item").count() == 1 and
+          "founder" in pg.locator(".slash-cmd").first.inner_text(),
+          pg.locator(".slash-cmd").first.inner_text() if pg.locator(".slash-item").count() else "none")
+    pg.locator(".slash-item").first.click(); pg.wait_for_timeout(400)
+    check("slash: running a command applies it",
+          pg.locator("#modeLabel").inner_text() == "Founder" and
+          pg.locator("#input").input_value() == "",
+          pg.locator("#modeLabel").inner_text())
+
+    # a slash inside a sentence must NOT open the menu
+    pg.fill("#input", "what is 10/2")
+    pg.dispatch_event("#input", "input"); pg.wait_for_timeout(300)
+    check("slash: mid-sentence slash ignored",
+          pg.locator("#slashMenu").is_hidden())
+    pg.fill("#input", "")
+
+    check("btn: mic button present", pg.locator("#micBtn").count() == 1)
+    check("chip: mode promises shown", pg.locator("#promiseChip").count() == 1)
+
+    # council drawer via slash
+    pg.fill("#input", "/council")
+    pg.dispatch_event("#input", "input"); pg.wait_for_timeout(350)
+    pg.locator(".slash-item").first.click(); pg.wait_for_timeout(1200)
+    check("slash: /council opens the model drawer",
+          pg.locator(".drawer").count() == 1 and
+          "council" in pg.locator(".drawer-head h3").inner_text().lower(),
+          pg.locator(".drawer-head h3").inner_text() if pg.locator(".drawer").count() else "none")
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(250)
 
     pg.screenshot(path=f"{S}/audit-final.png")
     b.close()

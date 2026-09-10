@@ -74,14 +74,19 @@
 
     <div class="composer-wrap">
       <div class="composer">
-        <textarea id="input" rows="1" placeholder="Ask anything. ⌘K for commands." autofocus></textarea>
+        <div class="slash-menu hidden" id="slashMenu"></div>
+        <textarea id="input" rows="1" placeholder="Ask anything.  /  for commands  ·  ⌘K palette" autofocus></textarea>
         <div class="attachments hidden" id="attachments"></div>
         <div class="composer-bar">
           <button class="btn attach-btn" id="attachBtn"
                   title="Attach a file — or drag one anywhere">⊕ Attach</button>
           <input type="file" id="fileInput" class="hidden" multiple>
           <span class="chip" id="toolChip" title="Tools available"></span>
+          <span class="chip hidden" id="promiseChip" title="Checkable promises of this mode"></span>
           <div class="spacer"></div>
+          <span class="chip token-meter hidden" id="tokenMeter" title="Rough context usage"></span>
+          <button class="btn-icon" id="micBtn" title="Dictate (⌘⇧V)">🎙</button>
+          <button class="btn-icon" id="helpBtn" title="Keyboard shortcuts (?)">?</button>
           <button class="btn-icon hidden" id="stopBtn" title="Stop">■</button>
           <button class="send-btn" id="sendBtn" title="Send (Enter)">↑</button>
         </div>
