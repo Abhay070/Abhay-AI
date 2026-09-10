@@ -1,0 +1,700 @@
+<title>Praxis Field Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --paper:#eaece4; --raised:#ffffff; --inset:#f4f6ef;
+  --rule:#d3d8c6; --rule-soft:#e2e6d8;
+  --ink:#1b1d18; --ink-dim:#565b4d; --ink-faint:#868c78;
+  --red:#c92f26; --red-soft:rgba(201,47,38,.10);
+  --lcd:#6d7c45; --lcd-soft:rgba(109,124,69,.12);
+  --amber:#a8760a;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#15170f; --raised:#1d2016; --inset:#191c12;
+    --rule:#333828; --rule-soft:#262a1d;
+    --ink:#e8ebdd; --ink-dim:#a2a892; --ink-faint:#767c68;
+    --red:#f2685e; --red-soft:rgba(242,104,94,.13);
+    --lcd:#a9bb70; --lcd-soft:rgba(169,187,112,.14);
+    --amber:#e0a52c;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#15170f; --raised:#1d2016; --inset:#191c12;
+  --rule:#333828; --rule-soft:#262a1d;
+  --ink:#e8ebdd; --ink-dim:#a2a892; --ink-faint:#767c68;
+  --red:#f2685e; --red-soft:rgba(242,104,94,.13);
+  --lcd:#a9bb70; --lcd-soft:rgba(169,187,112,.14);
+  --amber:#e0a52c;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:var(--body); font-size:17px; line-height:1.62;
+  padding-block:0; padding-left:20px; padding-right:20px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:0 56px;grid-template-columns:1fr}
+@media (min-width:1040px){ .wrap{grid-template-columns:206px minmax(0,1fr)} }
+
+/* ---- masthead ---- */
+header.top{grid-column:1/-1;padding-block:56px 0}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.17em;text-transform:uppercase;
+  color:var(--red);font-weight:700;margin:0 0 18px;
+  display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;
+}
+.eyebrow .sep{color:var(--ink-faint);font-weight:400}
+h1{
+  font-family:var(--display);font-weight:700;font-size:clamp(40px,7.4vw,74px);
+  line-height:.94;letter-spacing:-.028em;margin:0;text-wrap:balance;
+}
+h1 .sub{display:block;color:var(--ink-faint);font-weight:500;font-size:.36em;
+  letter-spacing:.01em;line-height:1.3;margin-top:16px;max-width:30ch}
+.strap{
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);margin:22px 0 0;
+  letter-spacing:.02em;
+}
+.plate{
+  margin:34px 0 0;border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));
+}
+.plate div{padding:13px 16px 15px 0;border-right:1px solid var(--rule-soft)}
+.plate div:last-child{border-right:0}
+.plate dt{font-family:var(--mono);font-size:10px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-faint);margin:0 0 5px}
+.plate dd{font-family:var(--display);font-weight:700;font-size:25px;margin:0;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.plate dd small{font-family:var(--mono);font-size:11px;font-weight:400;
+  color:var(--ink-dim);letter-spacing:0;display:block;margin-top:2px}
+
+/* ---- contents rail ---- */
+nav.toc{display:none}
+@media (min-width:1040px){
+  nav.toc{
+    display:block;position:sticky;top:0;align-self:start;
+    padding-block:56px 60px;max-height:100vh;overflow-y:auto;
+    border-right:1px solid var(--rule-soft);padding-right:20px;
+  }
+}
+nav.toc p{font-family:var(--mono);font-size:10px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-faint);margin:0 0 12px}
+nav.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+nav.toc a{
+  display:flex;gap:9px;text-decoration:none;color:var(--ink-dim);
+  font-family:var(--mono);font-size:11.5px;line-height:1.4;padding:4px 0;
+}
+nav.toc a:hover{color:var(--red)}
+nav.toc a b{color:var(--ink-faint);font-weight:500;flex:none;width:16px}
+nav.toc a:hover b{color:var(--red)}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--red);outline-offset:3px;border-radius:2px}
+
+main{min-width:0;padding-block:52px 90px}
+section{padding-block:0 8px;margin-bottom:46px;scroll-margin-top:24px}
+h2{
+  font-family:var(--display);font-weight:700;font-size:27px;letter-spacing:-.018em;
+  margin:0 0 6px;text-wrap:balance;display:flex;gap:12px;align-items:baseline;
+}
+h2 .n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red);
+  letter-spacing:.06em;flex:none;padding-top:2px}
+.rule{height:2px;background:var(--ink);margin:0 0 20px}
+h3{font-family:var(--display);font-weight:600;font-size:16.5px;letter-spacing:-.005em;
+  margin:30px 0 8px;color:var(--ink)}
+p{margin:0 0 15px;max-width:68ch}
+.lede{font-size:19px;color:var(--ink-dim);max-width:62ch}
+ul,ol.body{margin:0 0 16px;padding-left:20px;max-width:66ch}
+li{margin-bottom:7px}
+b,strong{font-weight:600}
+code{font-family:var(--mono);font-size:.855em;background:var(--inset);
+  padding:1.5px 5px;border-radius:3px;border:1px solid var(--rule-soft);
+  overflow-wrap:break-word}
+a{color:var(--red)}
+
+/* ---- spec rows ---- */
+.spec{margin:0 0 20px;border-top:1px solid var(--rule)}
+.spec .row{
+  display:grid;grid-template-columns:170px minmax(0,1fr);gap:4px 20px;
+  padding:10px 0;border-bottom:1px solid var(--rule-soft);align-items:baseline;
+}
+@media (max-width:560px){ .spec .row{grid-template-columns:1fr;gap:2px} }
+.spec .k{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
+  color:var(--ink-faint);text-transform:uppercase}
+.spec .v{font-size:15.5px;color:var(--ink);min-width:0}
+.spec .v code{font-size:13px}
+
+/* ---- table ---- */
+.scroll{overflow-x:auto;margin:0 0 20px;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+th{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);text-align:left;padding:9px 16px 9px 0;font-weight:500;
+  border-bottom:1px solid var(--rule);white-space:nowrap;
+}
+td{padding:9px 16px 9px 0;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+td:first-child{font-family:var(--mono);font-size:12.5px;white-space:nowrap;color:var(--ink)}
+td.num{font-variant-numeric:tabular-nums;text-align:right;padding-right:22px}
+
+/* ---- code block ---- */
+pre{
+  font-family:var(--mono);font-size:12.5px;line-height:1.62;background:var(--inset);
+  border:1px solid var(--rule-soft);border-left:2px solid var(--lcd);
+  padding:15px 17px;overflow-x:auto;margin:0 0 20px;border-radius:0 4px 4px 0;
+}
+pre b{color:var(--red);font-weight:500}
+pre i{color:var(--ink-faint);font-style:normal}
+
+/* ---- callout ---- */
+.note{
+  border-left:2px solid var(--red);background:var(--red-soft);
+  padding:13px 17px;margin:0 0 20px;font-size:15.5px;
+}
+.note p{margin:0;max-width:64ch}
+.note p+p{margin-top:9px}
+.note .tag{font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--red);font-weight:700;display:block;margin-bottom:5px}
+
+/* ---- incident log ---- */
+.log{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule)}
+.inc{border-bottom:1px solid var(--rule-soft);padding:16px 0 16px 15px;
+  border-left:3px solid var(--red);padding-left:15px}
+.inc.minor{border-left-color:var(--amber)}
+.inc h4{font-family:var(--display);font-weight:600;font-size:15.5px;margin:0 0 8px;
+  letter-spacing:-.005em}
+.inc dl{margin:0;display:grid;grid-template-columns:82px minmax(0,1fr);gap:4px 14px}
+@media (max-width:560px){ .inc dl{grid-template-columns:1fr;gap:1px} }
+.inc dt{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);padding-top:4px}
+.inc dd{margin:0;font-size:14.5px;line-height:1.55;color:var(--ink-dim)}
+.inc dd b{color:var(--ink);font-weight:600}
+@media (max-width:560px){ .inc dd{margin-bottom:7px} }
+
+/* ---- pills ---- */
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px}
+.pill{font-family:var(--mono);font-size:11px;letter-spacing:.03em;padding:3px 9px;
+  border:1px solid var(--rule);border-radius:2px;color:var(--ink-dim);background:var(--raised)}
+.pill.on{border-color:var(--lcd);color:var(--lcd);background:var(--lcd-soft);font-weight:500}
+.pill.off{color:var(--ink-faint)}
+
+footer{grid-column:1/-1;border-top:2px solid var(--ink);padding:20px 0 60px;
+  font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);
+  display:flex;flex-wrap:wrap;gap:8px 26px}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">Field manual <span class="sep">/</span> v0.7 <span class="sep">/</span> Abhay070/Abhay-AI <span class="sep">/</span> branch claude/custom-ai-models-dln3p4</p>
+  <h1>Praxis
+    <span class="sub">A self-hosted assistant that checks its own work — and says so when it fails.</span>
+  </h1>
+  <p class="strap">praxis (n.) — the process by which theory becomes action.<br>Think · Challenge · Build · Verify · Execute</p>
+  <dl class="plate">
+    <div><dt>Lines</dt><dd>10,766<small>Python + JS</small></dd></div>
+    <div><dt>Modes</dt><dd>10<small>9 enforced</small></dd></div>
+    <div><dt>Tools</dt><dd>15<small>14 on by default</small></dd></div>
+    <div><dt>Backends</dt><dd>7<small>one interface</small></dd></div>
+    <div><dt>Checks</dt><dd>122<small>+ 100 questions</small></dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#s1"><b>1</b>What it is</a></li>
+    <li><a href="#s2"><b>2</b>Lifecycle of a turn</a></li>
+    <li><a href="#s3"><b>3</b>Modules</a></li>
+    <li><a href="#s4"><b>4</b>The system prompt</a></li>
+    <li><a href="#s5"><b>5</b>Token budget</a></li>
+    <li><a href="#s6"><b>6</b>Modes &amp; contracts</a></li>
+    <li><a href="#s7"><b>7</b>Constraint engine</a></li>
+    <li><a href="#s8"><b>8</b>Tools</a></li>
+    <li><a href="#s9"><b>9</b>Providers</a></li>
+    <li><a href="#s10"><b>10</b>Strategies</a></li>
+    <li><a href="#s11"><b>11</b>Memory</a></li>
+    <li><a href="#s12"><b>12</b>Storage &amp; API</a></li>
+    <li><a href="#s13"><b>13</b>Web client</a></li>
+    <li><a href="#s14"><b>14</b>Configuration</a></li>
+    <li><a href="#s15"><b>15</b>Testing</a></li>
+    <li><a href="#s16"><b>16</b>Incident log</a></li>
+    <li><a href="#s17"><b>17</b>Runbook</a></li>
+    <li><a href="#s18"><b>18</b>Limits</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="s1">
+  <h2><span class="n">§1</span>What it is</h2><div class="rule"></div>
+  <p class="lede">Praxis is a complete assistant — web interface, agent loop, tools, memory, streaming — that runs on your machine and talks to whichever model you point it at. It is not a model. It is everything around one.</p>
+  <p>That distinction is the whole design. Models turn over every few months; the product around them does not have to. Swapping the brain is a one-line change in <code>.env</code>, because no application code knows which backend is answering.</p>
+  <p>What Praxis adds that a raw API call does not: a compiled identity that survives every turn, ten working modes with promises that are mechanically enforced, a constraint checker that catches what a model provably cannot check about its own output, a tool protocol that works on every backend including local ones, and a refusal to ever present a failure as a success.</p>
+  <div class="note">
+    <span class="tag">The governing rule</span>
+    <p>A blank reply that reports success is the worst failure this product can have — the user cannot diagnose it, work around it, or even tell that something went wrong. Every mechanism in §7, §9 and §16 exists to make silence impossible.</p>
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>Lifecycle of a turn</h2><div class="rule"></div>
+  <p>One user message, end to end. Everything is emitted as typed events over Server-Sent Events, so the interface can show <em>what the assistant is doing</em> rather than an opaque pause.</p>
+<pre>POST /api/chat  { message, mode, strategy, attachments[] }
+  │
+  ├─ <b>store</b>      user turn saved; attachments kept by <i>reference</i>, never inlined
+  ├─ <b>resolve</b>    provider health-checked; falls down FALLBACK_CHAIN if dead
+  ├─ <b>compose</b>    identity + mode overlay + memories + tool list + fitted history
+  │                  ↳ tool list compacts if it would eat the budget   (§5)
+  │                  ↳ attachment text folded in here, capped, with a read_file pointer
+  ├─ <b>detect</b>     constraints stated in the request  → 14 kinds  (§7)
+  │
+  ├─ <b>generate</b>   ── stream ──▶ token events
+  │     ↳ &lt;tool_call&gt; seen? hold the text back, run it, feed the result, continue  (§8)
+  │     ↳ HTTP 429?    wait what the provider asked, drop oldest turns, retry  (§9)
+  │     ↳ no content?  raise EmptyAnswer naming the cause — never return ""     (§9)
+  │
+  ├─ <b>verify</b>     constraints checked mechanically; mode contract checked  (§6, §7)
+  │     ↳ broken? hand the model its <i>specific</i> defect and regenerate (up to 2×)
+  │     ↳ still broken after 3 tries? append the failure to the answer and say so
+  │
+  └─ <b>done</b>       message id, elapsed, tool rounds, attempts, token estimate</pre>
+  <h3>Event types on the wire</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Event</th><th>Carries</th></tr></thead>
+    <tbody>
+      <tr><td>conversation</td><td>the id, first, so a new chat can be updated in place</td></tr>
+      <tr><td>start</td><td>provider, mode, strategy, detected constraints, mode promises, fallback notes</td></tr>
+      <tr><td>token</td><td>a chunk of visible text</td></tr>
+      <tr><td>tool_call / tool_result</td><td>name, arguments, icon; then output and success</td></tr>
+      <tr><td>memory</td><td>a fact was stored, so the interface can surface it</td></tr>
+      <tr><td>rate_limited</td><td>seconds to wait, attempt number, how many older turns were dropped</td></tr>
+      <tr><td>constraint_retry / _ok / _failed</td><td>which constraint, which attempt, and the outcome</td></tr>
+      <tr><td>mode_breach</td><td>which promise the mode broke</td></tr>
+      <tr><td>council_start / _member / _judging / _verdict</td><td>who is running, what each said, who won and why</td></tr>
+      <tr><td>cascade_escalate</td><td>the weak answer is being replaced, and by whom</td></tr>
+      <tr><td>empty_answer</td><td>the model finished without writing anything</td></tr>
+      <tr><td>error</td><td>what failed, in words that name the fix</td></tr>
+      <tr><td>done</td><td>message id, elapsed, tool rounds, constraint attempts, token estimate</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>Modules</h2><div class="rule"></div>
+  <div class="scroll"><table>
+    <thead><tr><th>File</th><th class="num">Lines</th><th>Owns</th></tr></thead>
+    <tbody>
+      <tr><td>praxis/agent.py</td><td class="num">732</td><td>The loop. Prompt assembly, the token budget, tool rounds, retries, rate-limit recovery, the event stream.</td></tr>
+      <tr><td>praxis/providers.py</td><td class="num">891</td><td>Seven backends behind one interface. Streaming, health probes, reasoning fields, empty-answer detection, 429 handling.</td></tr>
+      <tr><td>praxis/constraints.py</td><td class="num">635</td><td>Detecting constraints in a request and verifying them against an answer, character by character.</td></tr>
+      <tr><td>praxis/council.py</td><td class="num">316</td><td>Several models answer; a blind ballot picks the winner. Race, council, cascade.</td></tr>
+      <tr><td>praxis/modes.py</td><td class="num">284</td><td>Ten prompt overlays, each a distinct instruction set.</td></tr>
+      <tr><td>praxis/contracts.py</td><td class="num">267</td><td>Holding a mode to the promises its own prompt makes.</td></tr>
+      <tr><td>praxis/identity.py</td><td class="num">206</td><td>The core identity, the tool protocol, the memory preamble. Compiled once per request.</td></tr>
+      <tr><td>praxis/store.py</td><td class="num">328</td><td>SQLite in WAL mode: conversations, messages, memories, files, settings.</td></tr>
+      <tr><td>praxis/config.py</td><td class="num">134</td><td>Every knob, read from the environment, with defaults that work unconfigured.</td></tr>
+      <tr><td>praxis/tools/</td><td class="num">~900</td><td>Fifteen tools across six modules, plus the registry and the text protocol.</td></tr>
+      <tr><td>server.py</td><td class="num">408</td><td>FastAPI. The SSE chat endpoint, uploads with PDF extraction, conversations, memories, export.</td></tr>
+      <tr><td>web/static/app.js</td><td class="num">1,477</td><td>The whole client. No framework, no build step, one file.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>The system prompt</h2><div class="rule"></div>
+  <p>Assembled fresh every request from four parts, in this order:</p>
+  <div class="spec">
+    <div class="row"><div class="k">Core identity</div><div class="v">~1,170 tokens. Always present. The operating philosophy — verify premises before answering them, read tone before drafting a reply, obey a stated constraint exactly or say plainly that you cannot, calibrate refusals to actual harm rather than to keywords.</div></div>
+    <div class="row"><div class="k">Context</div><div class="v">Current date and time, the training-cutoff caveat, and the user's name.</div></div>
+    <div class="row"><div class="k">Memory</div><div class="v">Up to twelve recalled facts, chosen by keyword overlap with the recent conversation. Omitted entirely when nothing scores.</div></div>
+    <div class="row"><div class="k">Tool protocol</div><div class="v">The <code>&lt;tool_call&gt;</code> grammar plus the enabled tools. ~700 tokens in full, ~250 compacted.</div></div>
+    <div class="row"><div class="k">Mode overlay</div><div class="v">531–1,091 characters, and never trimmed. A mode that loses its overlay is not a mode.</div></div>
+  </div>
+  <p>Compiling it rather than pasting a specification is what makes it affordable: the raw philosophy document runs to roughly 4,000 tokens, and this carries the same behaviour in under half that.</p>
+  <p><code>GET /api/prompt?mode=direct</code> returns exactly what would be sent. When a mode appears to do nothing, that endpoint settles it in one request.</p>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>Token budget</h2><div class="rule"></div>
+  <p>The conversation is resent in full on every turn, so cost grows with the chat rather than with the message. Free tiers meter this per minute — Groq's on-demand tier allows <b>8,000 tokens a minute, prompt included</b> — which is why a long chat with a thinking model starts refusing requests that a short chat served fine.</p>
+  <div class="spec">
+    <div class="row"><div class="k">MAX_PROMPT_TOKENS</div><div class="v">4,000. The real budget. Counting turns says nothing about their size — twenty short turns and twenty turns each carrying a PDF are the same number and wildly different prompts.</div></div>
+    <div class="row"><div class="k">Fresh-chat cost</div><div class="v">~1,713 tokens, of which ~1,705 is the system prompt and its tool list.</div></div>
+    <div class="row"><div class="k">Tool-list compaction</div><div class="v">Automatic when the full list would exceed 15% of the budget. Drops the worked examples, keeps every tool name and argument — about 450 tokens off every request.</div></div>
+    <div class="row"><div class="k">ATTACHMENT_CHARS</div><div class="v">5,000 characters of a file ride in the prompt; the rest stays on disk behind <code>read_file</code>.</div></div>
+    <div class="row"><div class="k">MIN_QUESTION_CHARS</div><div class="v">1,200. However tight the budget, the question is never trimmed below this. A prompt trimmed past it is not a cheaper request, it is a wasted one.</div></div>
+    <div class="row"><div class="k">Under pressure</div><div class="v">Oldest turns go first; the newest user turn and everything after it is never dropped. On a 429, each retry drops half the remaining history, so the retry is genuinely cheaper than the try that was refused.</div></div>
+  </div>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>Modes and contracts</h2><div class="rule"></div>
+  <p>A mode is a promise. Prompt text alone does not keep one: a model reads "under 150 words" as a suggestion and writes 400, and the mode silently becomes decoration — the label says Direct, the answer reads like Standard, and nothing tells the user which they got.</p>
+  <p>So every promise that can be checked mechanically, is. A broken contract feeds the same repair loop as a broken constraint: the model is told exactly which promise it broke and rewrites.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Mode</th><th>Purpose</th><th>Enforced promise</th></tr></thead>
+    <tbody>
+      <tr><td>◈ standard</td><td>Balanced; adapts to what you bring</td><td>— none, deliberately</td></tr>
+      <tr><td>→ direct</td><td>Maximum signal, no cushioning</td><td>under 150 words · no throat-clearing opener</td></tr>
+      <tr><td>▲ founder</td><td>Commercial pressure-testing</td><td>ends with something testable this week</td></tr>
+      <tr><td>⊗ reality</td><td>Structured teardown with a verdict</td><td>states one of PURSUE / PURSUE WITH CHANGES / TEST FIRST / DROP IT</td></tr>
+      <tr><td>⚒ build</td><td>Idea to executable project</td><td>ships code or commands, not advice about them</td></tr>
+      <tr><td>◎ teacher</td><td>Understanding from the ground up</td><td>asks a real question · never says "as you probably know"</td></tr>
+      <tr><td>? socratic</td><td>Guides rather than tells</td><td>ends on a question</td></tr>
+      <tr><td>✓ exam</td><td>Tests you and marks you</td><td>asks a question</td></tr>
+      <tr><td>◇ research</td><td>Sources, cross-checks, dated claims</td><td>closes with established / contested / unknown</td></tr>
+      <tr><td>▤ brief</td><td>Decision-shaped</td><td>five named headings · under 350 words</td></tr>
+    </tbody>
+  </table></div>
+  <p>Two rules govern what may become a contract, because a false accusation is worse than a missed one: only promises the mode's own prompt actually states, and only checks that cannot reasonably misfire on a good answer. Word limits carry a 1.25× tolerance — failing an answer at 151 words is pedantry that costs a whole regeneration.</p>
+  <p><code>scripts/compare_modes.py "your question"</code> asks one question in every mode and reports what each promised, whether it kept it, and the shape of what came back — and says plainly when two modes answer identically, which is the failure worth catching.</p>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>Constraint engine</h2><div class="rule"></div>
+  <p>Asked for four sentences with no letter E or S, a model produced fifteen Es, sixteen Ss, and invented words like <code>trnspnds</code> trying. Asked for descriptions of exactly eight words, it produced seven, seven and six.</p>
+  <p>No amount of prompt text fixes that. Generation is token-level — a token is commonly several characters, chosen by a model with no per-letter counting step — so "be careful to obey the constraint" is an instruction the model <em>cannot execute</em>. It complies approximately and reports full compliance, which is the worst of both.</p>
+  <p>Code checks it in microseconds. Fourteen kinds are detected in the request and verified against the answer:</p>
+  <div class="pills">
+    <span class="pill on">forbidden_letters</span><span class="pill on">word_count</span>
+    <span class="pill on">sentence_count</span><span class="pill on">sentence_word_counts</span>
+    <span class="pill on">json</span><span class="pill on">banned_words</span>
+    <span class="pill on">no_punctuation</span><span class="pill on">word_initial</span>
+    <span class="pill on">alternating_initials</span><span class="pill on">abecedarian</span>
+    <span class="pill on">line_endings</span><span class="pill on">word_per_line</span>
+    <span class="pill on">line_word_max</span><span class="pill on">table_cell_words</span>
+  </div>
+  <p>Detection is deliberately conservative and requires explicit constraint language. A missed constraint costs nothing — the answer is no worse than before. A falsely detected one wastes a generation and teaches the user that the checker is noise. Where a rule cannot be checked honestly — "use no nouns" needs a part-of-speech tagger — nothing is claimed.</p>
+  <h3>The repair loop</h3>
+  <p>A violation is handed back as a named defect, not as "try again":</p>
+<pre>Your previous answer broke constraints the user set. A checker ran over
+it and found these specific failures:
+
+- Must not contain the letter(s) 'e'. <b>'e' appears 4x. Offending words
+  include: battery, generates, electrodes.</b>
+
+Rewrite the answer so it satisfies every constraint. Rules for the rewrite:
+- Use only real words. Do not delete letters from words to dodge a letter
+  rule — 'trnspnds' is not a word and does not count as a fix.
+- If a constraint genuinely cannot be met with real language, say so
+  plainly and explain why, rather than shipping something that violates it.</pre>
+  <p>That converts an impossible task into an easy one: the model no longer has to count, it only has to repair a named fault. Two retries are allowed. If the answer still fails, Praxis appends the failure to the answer rather than passing it off as compliant:</p>
+  <div class="note">
+    <span class="tag">What a failed check actually shows the user</span>
+    <p><em>Check failed after 3 attempts: word 1 starts with 'h', not 'a' (initials so far: hiacsatt). The answer above does not meet what you asked for.</em></p>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>Tools</h2><div class="rule"></div>
+  <p>Tool calls run on a text protocol — <code>&lt;tool_call&gt;{"name": …, "args": {…}}&lt;/tool_call&gt;</code> — rather than a provider's native function-calling API. Native calling is better where it exists, but it exists differently on every provider and not at all on many local models. The text protocol works identically on Ollama, Groq, Gemini and a model you trained yourself last Tuesday, which is the point of the project.</p>
+  <p>The agent watches the stream for an opening tag and holds text back from the screen the moment one appears, so raw JSON never reaches the user. A partial <code>&lt;tool_ca</code> at the tail of a chunk is held too.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Tool</th><th>Does</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td>calculate</td><td>Exact arithmetic — the model never computes it itself</td><td>on</td></tr>
+      <tr><td>current_time</td><td>Date and time, with timezone offset</td><td>on</td></tr>
+      <tr><td>remember / recall / forget</td><td>Durable facts about the user</td><td>on</td></tr>
+      <tr><td>web_search / web_fetch</td><td>Search, and read a page as text</td><td>on</td></tr>
+      <tr><td>read_file</td><td>The full text of an upload, past the excerpt in context</td><td>on</td></tr>
+      <tr><td>wikipedia / dictionary / exchange</td><td>Encyclopedia, definitions, currency at today's rate</td><td>on</td></tr>
+      <tr><td>github_repo / hacker_news / arxiv</td><td>Repository facts, front page, preprint search</td><td>on</td></tr>
+      <tr><td>run_python</td><td>Executes model-written code on your machine</td><td>off</td></tr>
+    </tbody>
+  </table></div>
+  <p><code>run_python</code> is off by default and stays off unless you set <code>ENABLE_CODE_EXEC=true</code>. It executes code a model wrote, on your machine, with your files.</p>
+  <p><code>MAX_TOOL_ROUNDS=6</code> caps a single turn, so a confused model cannot spin forever burning tokens. A tool that raises returns an error to the model rather than taking down the request; an unknown tool name gets a list of the real ones.</p>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>Providers</h2><div class="rule"></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Backend</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>demo</td><td>Scripted replies. No key, no network, no model — so the product runs the moment you clone it. <b>Every mode answers identically, because nothing reads the prompt.</b></td></tr>
+      <tr><td>ollama</td><td>Open models on your own hardware. Free, offline, private. Costs disk and RAM.</td></tr>
+      <tr><td>groq</td><td>Hosted open models, free tier, very fast. 8,000 tokens/minute on the on-demand tier.</td></tr>
+      <tr><td>gemini</td><td>Google AI Studio, free tier.</td></tr>
+      <tr><td>openai</td><td>Any OpenAI-compatible endpoint: LM Studio, llama.cpp, vLLM, OpenRouter, Together. One implementation, a dozen services.</td></tr>
+      <tr><td>anthropic</td><td>Claude. Paid, and the strongest option if you want one.</td></tr>
+      <tr><td>scratch</td><td>The transformer trained in <code>scratch/</code>. Produces nonsense. Included because it is yours.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Three things the streaming reader does that the textbook version does not</h3>
+  <div class="spec">
+    <div class="row"><div class="k">Reads reasoning</div><div class="v">A thinking model streams its scratchpad in <code>delta.reasoning</code> and its answer in <code>delta.content</code>. The reasoning is counted but never shown — putting it on screen would present the scratchpad as the reply. Ignoring the field entirely meant that when thinking consumed the whole output budget, an empty string was stored and the interface showed a blank bubble with a tick beside it.</div></div>
+    <div class="row"><div class="k">Refuses silence</div><div class="v">A stream that yields no visible characters raises <code>EmptyAnswer</code> naming the cause and the setting that fixes it — "spent its entire 4096-token budget thinking and never started the answer. Set REASONING_EFFORT=low, or raise OPENAI_MAX_TOKENS." Ollama and Gemini get the same treatment for their own thinking fields and finish reasons.</div></div>
+    <div class="row"><div class="k">Survives disagreement</div><div class="v">"OpenAI-compatible" is a family resemblance, not a specification. An endpoint that rejects <code>reasoning_effort</code> or <code>max_tokens</code> with a 400 gets the parameter dropped and one silent retry. The user never learns the parameter exists.</div></div>
+  </div>
+  <h3>Rate limits</h3>
+  <p>A 429 is not a broken backend; it is a working one asking you to wait. Praxis waits the interval the provider named — Groq puts it in the message body, not only in the <code>Retry-After</code> header — and drops the oldest half of the history before retrying, because waiting alone cannot help a request that is larger than the whole minute's allowance. Up to three attempts, each narrated with a live countdown.</p>
+  <p>When waiting genuinely cannot help, the error names the three things that shrink a turn instead of saying "rate limited": start a new conversation, lower <code>REASONING_EFFORT</code>, or lower <code>MAX_PROMPT_TOKENS</code> — with the current turn's cost in tokens, so the advice is grounded.</p>
+  <h3>Health checks</h3>
+  <p>Health probes reach the network, cached 30 seconds. An earlier version only inspected configuration, so a port with nothing listening reported healthy and the council wasted a slot on it every turn. A health check that cannot fail is not a health check.</p>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>Strategies</h2><div class="rule"></div>
+  <div class="spec">
+    <div class="row"><div class="k">single</div><div class="v">One model. Streams token by token. The default.</div></div>
+    <div class="row"><div class="k">race</div><div class="v">Several models start; the first usable answer wins and the rest are cancelled. Costs latency of the fastest, not the slowest.</div></div>
+    <div class="row"><div class="k">council</div><div class="v">Several models answer in full; a judge picks the winner. Cannot stream — nothing can be shown until every member has finished — so the wait is narrated instead: who is running, what each returned, who won and why.</div></div>
+    <div class="row"><div class="k">cascade</div><div class="v">The cheap model answers first. Only if the answer looks weak does it escalate to the strong one. Most questions do not need the expensive model.</div></div>
+  </div>
+  <p>Judging uses a <b>blind ballot</b>: the judge sees answers labelled A, B, C and never learns which model produced which. Without that, a judge reliably prefers whichever name it recognises.</p>
+  <p>When no judge is reachable, a stated heuristic decides, and it prefers honest hedging over confident length — a member that says "I'm not certain" beats one that invents a detailed answer. Unreachable members are dropped with a reason shown in the interface, so listing a local model alongside hosted ones is safe: it simply sits out when the machine is off.</p>
+  <div class="note">
+    <span class="tag">Measured, not assumed</span>
+    <p>The council runs genuinely in parallel over HTTP — three members cost 1.02× one member, verified against real servers with real latency. Against a CPU-bound local model it does not, and cannot: that path is GIL-bound, and threading it measured <em>worse</em> (three threads cost 6.41× one). The code says so where it matters rather than claiming a parallelism it does not have.</p>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>Memory</h2><div class="rule"></div>
+  <p>Facts are stored deliberately, by the model calling <code>remember</code>, not scraped from every turn. Recall scores by keyword overlap with the recent conversation, plus a small bonus for memories that have proved useful before, plus a standing bonus for preferences and goals.</p>
+  <p>No embeddings, no vector store. That is a considered choice: at personal scale — hundreds of memories, not millions — lexical overlap is roughly as accurate and has one decisive advantage. You can look at a recalled memory and understand <em>why</em> it surfaced. A memory system whose behaviour is inexplicable is one you stop trusting, and an untrusted memory is worse than none. Swap in embeddings past a few thousand; the interface does not change.</p>
+  <p>Everything is inspectable and editable from the memory drawer, and duplicates are collapsed on case and punctuation.</p>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>Storage and API</h2><div class="rule"></div>
+  <p>SQLite in WAL mode, one file at <code>data/praxis.db</code>. Five tables: conversations, messages, memories, files, settings. Messages carry a JSON <code>meta</code> blob — the mode, provider, strategy, tool rounds, constraint attempts, and any attachments the turn carried.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>POST /api/chat</td><td>The turn. Server-Sent Events.</td></tr>
+      <tr><td>GET /api/bootstrap</td><td>Everything the client needs at load: brand, modes, tools, providers, conversations, council state.</td></tr>
+      <tr><td>GET /api/health</td><td>Which backend answered, whether it is reachable, what was skipped.</td></tr>
+      <tr><td>GET /api/prompt?mode=</td><td>The exact system prompt that would be sent.</td></tr>
+      <tr><td>GET /api/council</td><td>Members, health, and why any were dropped.</td></tr>
+      <tr><td>POST /api/upload</td><td>Text formats and PDF. Returns an id, an excerpt, and the character count.</td></tr>
+      <tr><td>/api/conversations…</td><td>List, search, read, rename, pin, archive, delete, export as Markdown.</td></tr>
+      <tr><td>/api/memories…</td><td>List, search, create, edit, delete, clear.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Attachments</h3>
+  <p>Uploads are parsed to text at upload time and stored with an id. The id travels with the message; the text is folded into the prompt at compose time and never enters the transcript. A forty-page PDF is an attachment, not forty pages of the user's own message.</p>
+  <p>PDF extraction catches <code>BaseException</code>, not <code>Exception</code> — pypdf imports <code>cryptography</code>, whose Rust bindings raise pyo3's <code>PanicException</code>, which subclasses <code>BaseException</code> specifically so it dodges ordinary handlers. Catching only <code>Exception</code> returned a bare 500 with a Rust stack trace instead of a usable message.</p>
+</section>
+
+<section id="s13">
+  <h2><span class="n">§13</span>Web client</h2><div class="rule"></div>
+  <p>One file, plain DOM, no framework and no build step. The app is small enough that a framework would cost more than it saves, and this way it can be read end to end.</p>
+  <p>Markdown is rendered by a small hand-written pass: everything is HTML-escaped <em>before</em> any markup is added, so model output can never inject into the page. Fenced code is pulled out first so its contents never meet the inline rules.</p>
+  <p>The visual system is derived from a G-SHOCK × Pokémon watch: a cool olive-grey ground, a hot red accent, an LCD-green for verified states, and hard geometry. Light and dark both defined at token level.</p>
+  <h3>What the interface shows that a chat box does not</h3>
+  <ul>
+    <li>Tools running, with arguments and results, as they happen</li>
+    <li>The mode's promises as a chip, and a note when one was broken and rewritten</li>
+    <li>Council members thinking, each answer's preview, and the verdict with its reason</li>
+    <li>A live countdown when a rate limit is being waited out, and how many turns were dropped to fit</li>
+    <li>Attached files as chips on the turn that carried them</li>
+    <li>A token meter, a prompt inspector, a command palette, slash commands, and thirteen keyboard shortcuts</li>
+  </ul>
+</section>
+
+<section id="s14">
+  <h2><span class="n">§14</span>Configuration</h2><div class="rule"></div>
+  <p>Everything is an environment variable in <code>.env</code>, and every default works unconfigured. The settings that actually matter:</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Variable</th><th>Default</th><th>What it decides</th></tr></thead>
+    <tbody>
+      <tr><td>PROVIDER</td><td>demo</td><td>Which backend answers. <b>Change this first.</b></td></tr>
+      <tr><td>FALLBACK_CHAIN</td><td>ollama,groq,demo</td><td>Tried in order if the primary is unreachable</td></tr>
+      <tr><td>GROQ_MODEL</td><td>llama-3.3-70b-versatile</td><td>Verify with <code>scripts/list_models.py</code> — hosted models are retired often</td></tr>
+      <tr><td>MAX_PROMPT_TOKENS</td><td>4000</td><td>How much conversation is resent. The knob for a free tier.</td></tr>
+      <tr><td>REASONING_EFFORT</td><td>medium</td><td>low / medium / high, for models that think first. Sent only where understood.</td></tr>
+      <tr><td>OPENAI_MAX_TOKENS</td><td>4096</td><td>Ceiling on the answer itself</td></tr>
+      <tr><td>MAX_RATE_LIMIT_RETRIES</td><td>3</td><td>How many times a 429 is waited out before giving up</td></tr>
+      <tr><td>ATTACHMENT_CHARS</td><td>5000</td><td>How much of a file rides in the prompt</td></tr>
+      <tr><td>MAX_HISTORY / MAX_TOOL_ROUNDS</td><td>24 / 6</td><td>Turn and tool-round ceilings</td></tr>
+      <tr><td>DEFAULT_STRATEGY</td><td>single</td><td>single · race · council · cascade</td></tr>
+      <tr><td>COUNCIL_MEMBERS</td><td>—</td><td><code>backend:model@base-url</code>, comma separated</td></tr>
+      <tr><td>ENABLE_CODE_EXEC</td><td>false</td><td>Runs model-written Python on your machine</td></tr>
+      <tr><td>ENABLE_CONSTRAINT_CHECK</td><td>true</td><td>§7</td></tr>
+      <tr><td>ENABLE_MODE_CONTRACTS</td><td>true</td><td>§6</td></tr>
+      <tr><td>BRAND_NAME / _TAGLINE / _OWNER</td><td>Praxis / … / Abhay</td><td>Renames the whole product from one place</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s15">
+  <h2><span class="n">§15</span>Testing</h2><div class="rule"></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Suite</th><th class="num">Checks</th><th>Covers</th></tr></thead>
+    <tbody>
+      <tr><td>tests/test_praxis.py</td><td class="num">45</td><td>Units: constraints, contracts, modes, tools, memory, council logic, parsers</td></tr>
+      <tr><td>tests/test_failures_live.py</td><td class="num">20</td><td>The failures in §16, against real HTTP servers — blank answers, rate limits, attachments, mode distinction</td></tr>
+      <tr><td>tests/test_council_live.py</td><td class="num">8</td><td>Four local model servers with different personalities; parallelism measured, not asserted</td></tr>
+      <tr><td>tests/test_grader.py</td><td class="num">10</td><td>Calibrates the benchmark's own instrument (below)</td></tr>
+      <tr><td>tests/test_interface.py</td><td class="num">39</td><td>Every button, menu, drawer, shortcut and the attachment flow, driven in a real browser</td></tr>
+      <tr><td>tests/benchmark.py</td><td class="num">100</td><td>The diagnostic suite, over the real HTTP endpoint</td></tr>
+    </tbody>
+  </table></div>
+  <h3>The fake model server</h3>
+  <p><code>tests/fake_model_server.py</code> is not a mock object. It is a real HTTP server, spoken to over a real socket by the real provider code, streaming real Server-Sent Events. The only thing it fakes is the intelligence.</p>
+  <p>That distinction decides what the tests can prove. Mocking <code>Provider.stream</code> proves the branching logic and nothing else — a mock returns instantly and never touches the network stack, so a "concurrency" assertion against one is meaningless. Here each server sleeps before answering, so parallelism is <em>measured</em>. It can also be told to 429 the first N requests Groq-style, to refuse parameters it does not know, or to reason forever and never write an answer.</p>
+  <h3>The 100-question benchmark</h3>
+  <p>Five sections of twenty: premise traps, logic and spatial traps, hard structural constraints, sarcasm and subtext, domain edge cases and refusal calibration. It separates two things a single score would blur:</p>
+  <div class="spec">
+    <div class="row"><div class="k">Machinery</div><div class="v">Praxis's own job, graded exactly. Did an answer arrive? Was it blank? Did the turn error? Did the mode keep its contract? Did constraint checking engage? A failure here is a bug in this repository.</div></div>
+    <div class="row"><div class="k">Constraints</div><div class="v">The twenty structural questions, graded character by character. Not an opinion.</div></div>
+    <div class="row"><div class="k">Substance</div><div class="v">Keyword-scored, and therefore crude — the report says so on every run. A keyword can pass an answer that names the right person and gets the rest wrong. The full transcript is written to disk for exactly this reason.</div></div>
+  </div>
+  <p>The grader is itself calibrated. Each of the nineteen mechanically checkable constraints has a hand-written answer that genuinely satisfies it and one that genuinely does not, and both directions are asserted — plus a check that <code>praxis/constraints.py</code> and the benchmark <em>agree</em> about every one, since they are independent implementations. Writing those compliant answers by hand is the point: a rule you cannot satisfy yourself is a rule you have no business scoring.</p>
+  <div class="note">
+    <span class="tag">Current state, fake backend</span>
+    <p><b>100/100 questions answered. Zero machinery faults.</b> Substance scores against a scripted backend are meaningless by construction — run <code>python tests/benchmark.py</code> with your own key for a real one.</p>
+  </div>
+</section>
+
+<section id="s16">
+  <h2><span class="n">§16</span>Incident log</h2><div class="rule"></div>
+  <p>Every entry here was found in use or by adversarial testing, and each is now pinned by a test. Red is a failure the user saw; amber is one caught before they did.</p>
+  <div class="log">
+    <div class="inc">
+      <h4>Blank replies with no error anywhere</h4>
+      <dl>
+        <dt>Symptom</dt><dd>An empty assistant bubble with a tick and "1.56s" beside it. No error, no explanation.</dd>
+        <dt>Mechanism</dt><dd>A reasoning model streams thinking in <code>delta.reasoning</code> and the answer in <code>delta.content</code>. The reader dropped the first and never checked the second arrived. When thinking used the whole budget, the stream closed cleanly and <b>an empty string was stored as a success</b>.</dd>
+        <dt>Fix</dt><dd>Providers count what they yield and raise <code>EmptyAnswer</code> naming the cause and the setting that fixes it. Same for Ollama and Gemini.</dd>
+      </dl>
+    </div>
+    <div class="inc">
+      <h4>HTTP 429 on every other question</h4>
+      <dl>
+        <dt>Symptom</dt><dd><code>TPM: Limit 8000, Used 4949</code> — repeatedly, with the "Used" figure well under the limit.</dd>
+        <dt>Mechanism</dt><dd>Each request cost 3–5k tokens: a 2,163-token system prompt plus the whole conversation resent, plus reasoning tokens. The second question in a minute did not fit.</dd>
+        <dt>Fix</dt><dd>Wait the interval the provider named, drop the oldest half of history each retry, cap what is resent, compact the tool list (−450 tokens/request), and when waiting cannot help, name the three things that shrink a turn.</dd>
+      </dl>
+    </div>
+    <div class="inc">
+      <h4>The PDF pasted into the user's own message</h4>
+      <dl>
+        <dt>Symptom</dt><dd>Attaching a file turned the user's message bubble into pages of extracted text, ending in "[excerpt only]".</dd>
+        <dt>Mechanism</dt><dd>The client appended the file's text to the message body before sending, so the transcript <em>became</em> the document.</dd>
+        <dt>Fix</dt><dd>Attachments travel as ids. The text is folded into the prompt at compose time; the turn shows a chip. <code>read_file</code> still reaches every word.</dd>
+      </dl>
+    </div>
+    <div class="inc">
+      <h4>The question pushed out of its own prompt</h4>
+      <dl>
+        <dt>Symptom</dt><dd>None visible — the model simply answered as though it had not read the question.</dd>
+        <dt>Mechanism</dt><dd>Budget trimming kept whatever it reached walking backwards, which is the last <em>assistant</em> turn when a history ends with one. A large attachment then pushed the user's question out.</dd>
+        <dt>Fix</dt><dd>Anchor on the newest user turn and everything after it; that block is never dropped, only abridged, and never below 1,200 characters.</dd>
+      </dl>
+    </div>
+    <div class="inc">
+      <h4>The answer erased by its own failure note</h4>
+      <dl>
+        <dt>Symptom</dt><dd>A mode that broke its promise three times showed only the failure note — the answer itself was gone.</dd>
+        <dt>Mechanism</dt><dd>The client cleared the message body on every <code>mode_breach</code>, including the final one, where no rewrite follows.</dd>
+        <dt>Fix</dt><dd>Only <code>constraint_retry</code> clears, because only it precedes a rewrite.</dd>
+      </dl>
+    </div>
+    <div class="inc">
+      <h4>A failed turn showed nothing at all</h4>
+      <dl>
+        <dt>Symptom</dt><dd>An error left the bubble blank for the whole turn.</dd>
+        <dt>Mechanism</dt><dd>The <code>error</code> event updated the model object but never touched the DOM.</dd>
+        <dt>Fix</dt><dd>Errors render immediately, in words that name the fix.</dd>
+      </dl>
+    </div>
+    <div class="inc minor">
+      <h4>Health checks that could not fail</h4>
+      <dl>
+        <dt>Mechanism</dt><dd>The check inspected configuration and never touched the network, so a dead port and a garbage key both reported healthy — and the council wasted a slot on them every turn.</dd>
+        <dt>Fix</dt><dd>Probe the endpoint, cache 30 seconds, distinguish unreachable from rejected-key from wrong-model.</dd>
+      </dl>
+    </div>
+    <div class="inc minor">
+      <h4>The council ran sequentially</h4>
+      <dl>
+        <dt>Mechanism</dt><dd>Three members cost 3.24× one. A synchronous forward pass was blocking the event loop.</dd>
+        <dt>Fix</dt><dd>HTTP backends were never affected — verified at 1.02×. Threading the local path made it <em>worse</em> (0.87s → 2.17s per token); the model is GIL-bound. Reverted, and documented with the measurements rather than left as a mystery.</dd>
+      </dl>
+    </div>
+    <div class="inc minor">
+      <h4>False accusations from the constraint checker</h4>
+      <dl>
+        <dt>Mechanism</dt><dd>Three separately: a markdown bullet counted as a word, so "every word starts with P" failed a correct list; a count scoped to a table column was applied to the whole answer; and a run of per-sentence counts took only its first number.</dd>
+        <dt>Fix</dt><dd>Words must contain a letter or digit; <code>table_cell_words</code> and <code>sentence_word_counts</code> became real constraint kinds. A false accusation costs a whole regeneration and teaches the user the checker is noise.</dd>
+      </dl>
+    </div>
+    <div class="inc minor">
+      <h4>Recommended a text-to-speech model as a chat backend</h4>
+      <dl>
+        <dt>Mechanism</dt><dd><code>list_models.py</code> filtered on "tts", which <code>canopylabs/orpheus</code> does not contain, and its ranking fell through to name <em>length</em>.</dd>
+        <dt>Fix</dt><dd>Rank by stated parameter count and instruction-tuned markers, and penalise single-language and single-task models. A user-facing error, and mine.</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="s17">
+  <h2><span class="n">§17</span>Runbook</h2><div class="rule"></div>
+<pre><i># 1. Is it actually working, and if not, why?</i>
+python scripts/doctor.py
+<i>#    Reads .env, resolves the backend, asks your account what models it
+#    really offers, prints what one turn costs against your tier's
+#    allowance, sends a real question. Every failing check prints the
+#    line to change.</i>
+
+<i># 2. Which models can this key actually reach?</i>
+python scripts/list_models.py groq
+<i>#    Hosted models are retired constantly, and a retired name returns a
+#    404 that reads like a broken key.</i>
+
+<i># 3. Score it on 100 questions</i>
+python server.py            <i># one terminal</i>
+python tests/benchmark.py   <i># another; --pace 8 on a free tier</i>
+<i>#    Writes benchmark-transcript.md. Read the answers — the score is a
+#    summary, not a verdict.</i>
+
+<i># 4. Do the modes actually differ?</i>
+python scripts/compare_modes.py "Should I rewrite our billing service in Go?"
+<i>#    One question, ten modes, side by side, with promises kept or broken.</i>
+
+<i># 5. Everything else</i>
+python tests/test_praxis.py          <i># 45 units</i>
+python tests/test_failures_live.py   <i># 20, real HTTP</i>
+python tests/test_council_live.py    <i># 8, four model servers</i>
+python tests/test_grader.py          <i># 10, calibrates the benchmark</i>
+python tests/test_interface.py       <i># 39, real browser (needs a server up)</i></pre>
+  <div class="note">
+    <span class="tag">If it answers nothing at all</span>
+    <p>Run the doctor first. In order, the usual causes are: <code>PROVIDER=demo</code> (a script, not a model — every mode will answer identically); a model name your account cannot reach; a key with no quotes and no spaces that is nonetheless not loaded because there is no <code>.env</code>; and a free tier's per-minute allowance, which Praxis now waits out and narrates rather than failing.</p>
+  </div>
+</section>
+
+<section id="s18">
+  <h2><span class="n">§18</span>Limits</h2><div class="rule"></div>
+  <p>Stated plainly, because a specification that only lists strengths is marketing.</p>
+  <div class="spec">
+    <div class="row"><div class="k">No authentication</div><div class="v">There is no login and no per-user separation. Anyone who reaches the port gets the assistant, the conversations and the memories. <b>Do not expose it publicly</b> — not on a Codespaces public port, not behind a tunnel — until auth exists.</div></div>
+    <div class="row"><div class="k">It is not the model</div><div class="v">Praxis cannot make a weak model clever. It can stop a weak model lying about whether it obeyed you, and it can ask three models and take the best — that is the ceiling.</div></div>
+    <div class="row"><div class="k">Keyword scoring is crude</div><div class="v">Outside the constraint section, the benchmark probes for phrases. It can pass an answer that names the right person and gets the rest wrong. Read the transcript.</div></div>
+    <div class="row"><div class="k">Some constraints are unenforceable</div><div class="v">"Use no nouns" needs a part-of-speech tagger. Praxis reports it rather than pretending to check it.</div></div>
+    <div class="row"><div class="k">Memory is lexical</div><div class="v">Keyword overlap, not embeddings. Right at personal scale; swap it past a few thousand memories.</div></div>
+    <div class="row"><div class="k">Token counts are estimates</div><div class="v">Four characters per token holds well enough for English to be a useful gauge and badly enough that it is never presented as exact.</div></div>
+    <div class="row"><div class="k">The council cannot stream</div><div class="v">Nothing can be shown until every member has finished and the judge has ruled. The wait is narrated, not hidden.</div></div>
+    <div class="row"><div class="k">Single machine, single user</div><div class="v">SQLite, local files, no queue, no worker pool. That is the right shape for what this is, and the wrong shape for a service.</div></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <span>Praxis v0.7</span>
+  <span>Abhay070/Abhay-AI</span>
+  <span>10,766 lines</span>
+  <span>122 checks + 100 questions</span>
+</footer>
+
+</div>
