@@ -23,6 +23,7 @@ Event types on the wire:
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ from typing import AsyncIterator
 from . import modes as modes_mod
 from . import tools as toolkit
 from .config import Settings
+from . import council as council_mod
 from .constraints import correction_prompt, detect as detect_constraints
 from .constraints import verify as verify_constraints
 from .identity import build_system_prompt
@@ -255,9 +257,131 @@ class Agent:
         out["rounds"] = rounds
         out["completion_chars"] = completion_chars
 
+    async def _council_pass(self, messages: list[dict], question: str,
+                            strategy: str, out: dict) -> AsyncIterator[Event]:
+        """Ask several models, then hand back the answer that wins.
+
+        This cannot stream the way a single model does — nothing can be shown
+        until every member has finished and the judge has ruled. So the wait is
+        narrated instead: which members are running, what each returned, who
+        won and why. A visible queue beats an invisible pause."""
+        members = council_mod.build_members(self.settings.council_members)
+        if not members:
+            out["error"] = "No council members configured. Set COUNCIL_MEMBERS."
+            yield Event("error", {"message": out["error"]})
+            return
+
+        live, dropped = await council_mod.healthy_members(members)
+        yield Event("council_start", {
+            "strategy": strategy,
+            "members": [council_mod.describe(m) for m in live],
+            "dropped": dropped,
+        })
+        if not live:
+            out["error"] = ("Every council member is unreachable: "
+                            + "; ".join(dropped))
+            yield Event("error", {"message": out["error"]})
+            return
+
+        if strategy == "race":
+            winner, candidates = await council_mod.race(
+                live, messages, self.settings.council_timeout)
+            verdict = council_mod.Verdict(
+                winner, "first usable answer", "race", candidates)
+        else:
+            candidates = await council_mod.gather(
+                live, messages, self.settings.council_timeout)
+            for c in candidates:
+                yield Event("council_member", {
+                    "label": c.label, "provider": c.provider,
+                    "ok": c.usable, "elapsed": c.elapsed,
+                    "error": c.error,
+                    "preview": c.text[:220],
+                })
+            judge_provider = None
+            if self.settings.council_judge:
+                try:
+                    judge_provider = council_mod.from_spec(self.settings.council_judge)
+                except ProviderError:
+                    judge_provider = None
+            yield Event("council_judging", {"judge": self.settings.council_judge
+                                            or "heuristic"})
+            verdict = await council_mod.judge(judge_provider, question, candidates)
+
+        yield Event("council_verdict", {
+            "winner": verdict.winner.provider,
+            "label": verdict.winner.label,
+            "reason": verdict.reason,
+            "method": verdict.method,
+            "judge_elapsed": verdict.judge_elapsed,
+            "considered": [
+                {"label": c.label, "provider": c.provider, "ok": c.usable,
+                 "elapsed": c.elapsed, "error": c.error}
+                for c in verdict.candidates
+            ],
+        })
+
+        if verdict.winner.error:
+            out["error"] = f"No member answered: {verdict.winner.error}"
+            yield Event("error", {"message": out["error"]})
+            return
+
+        text = verdict.winner.text
+        # Emit in chunks so the interface behaves the same as a live stream.
+        for i in range(0, len(text), 24):
+            yield Event("token", {"text": text[i:i + 24]})
+            await asyncio.sleep(0)
+
+        out["text"] = text
+        out["rounds"] = 0
+        out["completion_chars"] = sum(len(c.text) for c in verdict.candidates)
+        out["verdict"] = verdict
+
+    async def _cascade_pass(self, provider: Provider, messages: list[dict],
+                            tool_names: set[str], conversation_id: str,
+                            out: dict) -> AsyncIterator[Event]:
+        """Cheap model first; escalate only when its answer looks weak.
+
+        Most questions do not need the expensive model. Paying for it on every
+        turn is the easiest way to make a good product too costly to run."""
+        async for event in self._one_pass(provider, messages, tool_names,
+                                          conversation_id, out):
+            yield event
+        if "error" in out:
+            return
+
+        weak, why = council_mod.looks_weak(out.get("text", ""))
+        if not weak:
+            out["cascade"] = {"escalated": False}
+            return
+
+        try:
+            strong = council_mod.from_spec(self.settings.cascade_strong)
+        except ProviderError as e:
+            out["cascade"] = {"escalated": False, "note": str(e)}
+            return
+        ok, detail = await strong.health()
+        if not ok:
+            out["cascade"] = {"escalated": False, "note": detail}
+            return
+
+        yield Event("cascade_escalate", {
+            "reason": why,
+            "from": council_mod.describe(provider),
+            "to": council_mod.describe(strong),
+        })
+        first = out.get("text", "")
+        out.clear()
+        async for event in self._one_pass(strong, list(messages), tool_names,
+                                          conversation_id, out):
+            yield event
+        out["cascade"] = {"escalated": True, "reason": why,
+                          "discarded_chars": len(first)}
+
     async def run(self, provider: Provider, conversation_id: str, history: list[dict],
                   mode_key: str, user_name: str = "",
-                  notes: list[str] | None = None) -> AsyncIterator[Event]:
+                  notes: list[str] | None = None,
+                  strategy: str | None = None) -> AsyncIterator[Event]:
         started = time.time()
         messages, memories, active_tools = self.compose(history, mode_key, user_name)
 
@@ -269,7 +393,12 @@ class Agent:
         constraints = (detect_constraints(last_user)
                        if self.settings.enable_constraint_check else [])
 
+        strategy = (strategy or self.settings.default_strategy).lower()
+        if strategy not in council_mod.STRATEGIES:
+            strategy = "single"
+
         yield Event("start", {
+            "strategy": strategy,
             "provider": provider.name,
             "provider_label": provider.label,
             "mode": mode_key,
@@ -299,9 +428,18 @@ class Agent:
                 })
 
             out: dict = {}
-            async for event in self._one_pass(provider, working, tool_names,
-                                              conversation_id, out):
-                yield event
+            if strategy in ("council", "race"):
+                async for event in self._council_pass(working, last_user,
+                                                      strategy, out):
+                    yield event
+            elif strategy == "cascade":
+                async for event in self._cascade_pass(provider, working, tool_names,
+                                                      conversation_id, out):
+                    yield event
+            else:
+                async for event in self._one_pass(provider, working, tool_names,
+                                                  conversation_id, out):
+                    yield event
             if "error" in out:
                 return
 
@@ -340,12 +478,14 @@ class Agent:
         message_id = self.store.add_message(
             conversation_id, "assistant", final,
             {"mode": mode_key, "provider": provider.name,
+             "strategy": strategy,
              "tool_rounds": total_rounds, "memories_used": len(memories),
              "constraint_attempts": attempts},
         )
 
         yield Event("done", {
             "message_id": message_id,
+            "strategy": strategy,
             "elapsed": round(time.time() - started, 2),
             "tool_rounds": total_rounds,
             "constraint_attempts": attempts,

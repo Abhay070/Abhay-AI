@@ -633,3 +633,60 @@ pre.prompt-dump {
 .dropzone-card .sub {
   font-size: 12.5px; color: var(--text-dim); margin-top: 5px;
 }
+
+/* --- the council ---------------------------------------------------------- */
+
+.council {
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg-inset); margin-bottom: 12px; overflow: hidden;
+  border-left: 3px solid var(--blue);
+}
+.council-head {
+  display: flex; align-items: center; gap: 9px; padding: 9px 13px;
+  font-size: 12.5px; border-bottom: 1px solid var(--border);
+}
+.council-head .ic { color: var(--blue); font-size: 14px; }
+.council-head .ti { font-weight: 620; }
+.council-head .sub { color: var(--text-faint); font-size: 11.5px; margin-left: auto; }
+.council-body { padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; }
+
+.cm {
+  display: flex; align-items: center; gap: 9px; padding: 6px 9px;
+  border-radius: 8px; font-size: 12px; background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+.cm.win { border-color: var(--green); background: color-mix(in srgb, var(--green) 8%, var(--bg-raised)); }
+.cm.err { opacity: .62; }
+.cm-tag {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+  width: 17px; height: 17px; border-radius: 5px; flex: none;
+  display: grid; place-items: center;
+  background: var(--bg-inset); color: var(--text-dim);
+}
+.cm.win .cm-tag { background: var(--green); color: #fff; }
+.cm-name { font-family: var(--mono); font-size: 11.5px; }
+.cm-prev {
+  color: var(--text-faint); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; flex: 1; min-width: 0;
+}
+.cm-time { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
+.cm-mark { font-size: 12px; }
+.cm-mark.ok { color: var(--green); } .cm-mark.no { color: var(--err); }
+
+.council-verdict {
+  padding: 9px 13px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-dim); background: var(--bg-raised);
+}
+.council-verdict b { color: var(--green); }
+.council-verdict .how {
+  font-family: var(--mono); font-size: 10px; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: .08em; margin-left: 6px;
+}
+.cascade-note {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  padding: 7px 12px; margin-bottom: 10px; border-radius: 9px;
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--yellow) 40%, transparent);
+  color: var(--text-dim);
+}
+.cascade-note .ic { color: var(--yellow); }

@@ -11,6 +11,9 @@ const state = {
   messages: [],          // {role, content, tools:[], meta}
   mode: 'standard',
   modes: [],
+  strategy: 'single',
+  strategies: [],
+  council: null,
   tools: [],
   providers: [],
   conversations: [],
@@ -158,7 +161,11 @@ async function boot() {
   state.tools = data.tools;
   state.providers = data.providers;
   state.conversations = data.conversations;
+  state.strategies = data.strategies || [];
+  state.council = data.council || null;
   state.mode = localStorage.getItem('praxis.mode') || 'standard';
+  state.strategy = localStorage.getItem('praxis.strategy') ||
+                   (data.council && data.council.default_strategy) || 'single';
 
   document.title = data.brand.name;
   $('brandName').textContent = data.brand.name;
@@ -179,6 +186,8 @@ async function boot() {
 
   buildModeMenu();
   applyMode(state.mode);
+  buildStrategyMenu();
+  applyStrategy(state.strategy);
   renderConversations();
   renderEmpty();
 
@@ -209,6 +218,37 @@ function applyMode(key) {
   $('modeIcon').textContent = m.icon;
   $('modeLabel').textContent = m.label;
   buildModeMenu();
+}
+
+/* --- strategy (how many models answer) ------------------------------------ */
+
+function buildStrategyMenu() {
+  const menu = $('strategyMenu');
+  if (!menu) return;
+  menu.innerHTML = '';
+  for (const s of state.strategies) {
+    const b = el('button', 'mode-item' + (s.key === state.strategy ? ' active' : ''));
+    let blurb = escapeHtml(s.blurb);
+    if (s.key !== 'single' && state.council && state.council.members.length) {
+      blurb += '<br><span style="opacity:.7">' +
+               escapeHtml(state.council.members.join(' · ')) + '</span>';
+    }
+    b.innerHTML = '<span class="mode-icon">' + s.icon + '</span>' +
+      '<span><span class="mode-item-label">' + escapeHtml(s.label) + '</span><br>' +
+      '<span class="mode-item-blurb">' + blurb + '</span></span>';
+    b.onclick = () => { applyStrategy(s.key); menu.classList.add('hidden'); };
+    menu.appendChild(b);
+  }
+}
+
+function applyStrategy(key) {
+  const s = state.strategies.find(x => x.key === key) || state.strategies[0];
+  if (!s) return;
+  state.strategy = s.key;
+  localStorage.setItem('praxis.strategy', s.key);
+  $('strategyIcon').textContent = s.icon;
+  $('strategyLabel').textContent = s.label;
+  buildStrategyMenu();
 }
 
 /* --- conversations -------------------------------------------------------- */
@@ -346,6 +386,9 @@ function messageNode(m, index) {
   }
   node.appendChild(head);
 
+  if (m.council) node.appendChild(councilNode(m.council));
+  if (m.cascade) node.appendChild(cascadeNode(m.cascade));
+
   if (m.tools && m.tools.length) {
     const box = el('div', 'msg-tools');
     m.tools.forEach(t => box.appendChild(toolNode(t)));
@@ -382,6 +425,51 @@ function toolNode(t) {
     box.appendChild(body);
   }
   return box;
+}
+
+function councilNode(c) {
+  const box = el('div', 'council');
+  const head = el('div', 'council-head');
+  head.innerHTML = '<span class="ic">' + (c.strategy === 'race' ? '⚡' : '⚖') + '</span>' +
+    '<span class="ti">' + (c.strategy === 'race' ? 'Race' : 'Council') + '</span>' +
+    '<span class="sub">' + escapeHtml(c.members.join(' · ')) + '</span>';
+  box.appendChild(head);
+
+  const body = el('div', 'council-body');
+  for (const m of c.entries) {
+    const row = el('div', 'cm' + (m.winner ? ' win' : '') + (m.ok ? '' : ' err'));
+    row.innerHTML =
+      '<span class="cm-tag">' + escapeHtml(m.label) + '</span>' +
+      '<span class="cm-name">' + escapeHtml(m.provider) + '</span>' +
+      '<span class="cm-prev">' + escapeHtml(m.error || m.preview || '') + '</span>' +
+      (m.elapsed ? '<span class="cm-time">' + m.elapsed + 's</span>' : '') +
+      '<span class="cm-mark ' + (m.ok ? 'ok' : 'no') + '">' +
+        (m.pending ? '◐' : (m.ok ? '✓' : '✕')) + '</span>';
+    body.appendChild(row);
+  }
+  box.appendChild(body);
+
+  if (c.verdict) {
+    const v = el('div', 'council-verdict');
+    v.innerHTML = 'Winner <b>' + escapeHtml(c.verdict.winner) + '</b> — ' +
+      escapeHtml(c.verdict.reason) +
+      '<span class="how">' + escapeHtml(c.verdict.method) + '</span>';
+    box.appendChild(v);
+  }
+  for (const note of (c.dropped || [])) {
+    const d = el('div', 'council-verdict');
+    d.style.color = 'var(--text-faint)';
+    d.textContent = 'Skipped — ' + note;
+    box.appendChild(d);
+  }
+  return box;
+}
+
+function cascadeNode(info) {
+  const n = el('div', 'cascade-note');
+  n.innerHTML = '<span class="ic">↗</span><span>Escalated to <b>' +
+    escapeHtml(info.to) + '</b> — ' + escapeHtml(info.reason) + '</span>';
+  return n;
 }
 
 function footer(m, index) {
@@ -479,6 +567,7 @@ async function stream(payload) {
       body: JSON.stringify(Object.assign({
         conversation_id: state.conversationId,
         mode: state.mode,
+        strategy: state.strategy,
       }, payload)),
       signal: controller.signal,
     });
@@ -501,7 +590,7 @@ async function stream(payload) {
         if (raw === '[DONE]') continue;
         let evt;
         try { evt = JSON.parse(raw); } catch (err) { continue; }
-        handleEvent(evt, assistant, body, toolBox);
+        handleEvent(evt, assistant, body, toolBox, node);
       }
     }
   } catch (e) {
@@ -523,7 +612,17 @@ async function stream(payload) {
   }
 }
 
-function handleEvent(evt, assistant, body, toolBox) {
+// Re-render the council / cascade panel in place, above the streaming text.
+function renderCouncil(assistant, node) {
+  if (!node) return;
+  node.querySelectorAll('.council, .cascade-note').forEach(n => n.remove());
+  const anchor = node.querySelector('.msg-tools') || node.querySelector('.msg-body');
+  if (assistant.council) node.insertBefore(councilNode(assistant.council), anchor);
+  if (assistant.cascade) node.insertBefore(cascadeNode(assistant.cascade), anchor);
+  scrollDown();
+}
+
+function handleEvent(evt, assistant, body, toolBox, node) {
   const d = evt.data || {};
   switch (evt.type) {
     case 'conversation':
@@ -569,6 +668,56 @@ function handleEvent(evt, assistant, body, toolBox) {
     // A checker found the answer broke a constraint the request stated, and
     // the model is rewriting it. Clear what streamed so far — showing the
     // rejected draft above its replacement would just be confusing.
+    case 'council_start': {
+      assistant.council = {
+        strategy: d.strategy, members: d.members, dropped: d.dropped,
+        entries: d.members.map((m, i) => ({
+          label: String.fromCharCode(65 + i), provider: m,
+          pending: true, ok: false, preview: 'thinking…',
+        })),
+        verdict: null,
+      };
+      renderCouncil(assistant, node);
+      break;
+    }
+
+    case 'council_member': {
+      if (!assistant.council) break;
+      const e = assistant.council.entries.find(x => x.provider === d.provider)
+             || assistant.council.entries.find(x => x.label === d.label);
+      if (e) Object.assign(e, {
+        pending: false, ok: d.ok, elapsed: d.elapsed,
+        error: d.error, preview: d.preview,
+      });
+      renderCouncil(assistant, node);
+      break;
+    }
+
+    case 'council_judging':
+      if (assistant.council) {
+        assistant.council.judging = true;
+        toast('Judging with ' + d.judge);
+      }
+      break;
+
+    case 'council_verdict': {
+      if (!assistant.council) break;
+      assistant.council.verdict = {
+        winner: d.winner, reason: d.reason, method: d.method,
+      };
+      for (const e of assistant.council.entries) e.winner = (e.label === d.label);
+      renderCouncil(assistant, node);
+      break;
+    }
+
+    case 'cascade_escalate':
+      assistant.cascade = { reason: d.reason, from: d.from, to: d.to };
+      assistant.content = '';      // the weak draft is being replaced
+      body.innerHTML = '';
+      renderCouncil(assistant, node);
+      toast('Escalating to ' + d.to);
+      break;
+
     case 'constraint_retry':
       assistant.content = '';
       assistant.tools = [];
@@ -804,6 +953,9 @@ function openPalette() {
   ].concat(state.modes.map(m => ({
     icon: m.icon, label: 'Mode: ' + m.label, hint: m.blurb,
     run: () => applyMode(m.key),
+  }))).concat(state.strategies.map(s => ({
+    icon: s.icon, label: 'Strategy: ' + s.label, hint: s.blurb,
+    run: () => applyStrategy(s.key),
   })));
 
   const scrim = el('div', 'scrim');
@@ -887,7 +1039,17 @@ $('modeBtn').onclick = (e) => {
   e.stopPropagation();
   $('modeMenu').classList.toggle('hidden');
 };
-document.addEventListener('click', () => $('modeMenu').classList.add('hidden'));
+$('strategyBtn').onclick = (e) => {
+  e.stopPropagation();
+  $('modeMenu').classList.add('hidden');
+  $('strategyMenu').classList.toggle('hidden');
+};
+$('strategyMenu').onclick = (e) => e.stopPropagation();
+
+document.addEventListener('click', () => {
+  $('modeMenu').classList.add('hidden');
+  $('strategyMenu').classList.add('hidden');
+});
 $('modeMenu').onclick = (e) => e.stopPropagation();
 
 const inputEl = $('input');
@@ -912,7 +1074,15 @@ document.addEventListener('keydown', (e) => {
   if (meta && e.key === 'm') { e.preventDefault(); openMemory(); }
   if (meta && e.key === ',') { e.preventDefault(); openSettings(); }
   if (meta && e.key === '\\') { e.preventDefault(); toggleSidebar(); }
-  if (e.key === 'Escape') { closeDrawers(); $('modeMenu').classList.add('hidden'); }
+  if (meta && e.key === 'j') {
+    e.preventDefault();
+    $('strategyMenu').classList.toggle('hidden');
+  }
+  if (e.key === 'Escape') {
+    closeDrawers();
+    $('modeMenu').classList.add('hidden');
+    $('strategyMenu').classList.add('hidden');
+  }
 });
 
 document.addEventListener('click', (e) => {

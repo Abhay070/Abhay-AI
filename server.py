@@ -29,7 +29,8 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from praxis import __version__, modes as modes_mod, providers, tools as toolkit
+from praxis import (__version__, council as council_mod, modes as modes_mod,
+                    providers, tools as toolkit)
 from praxis.agent import Agent
 from praxis.config import BRAND, settings
 from praxis.store import CATEGORIES, Store
@@ -56,6 +57,7 @@ class ChatRequest(BaseModel):
     message: str
     mode: str = settings.default_mode
     provider: str | None = None
+    strategy: str | None = None
     regenerate_from: str | None = None
 
 
@@ -98,6 +100,22 @@ async def bootstrap() -> dict:
                      "ok": ok, "detail": detail, "notes": notes,
                      "requested": settings.provider},
         "providers": providers.catalogue(),
+        "strategies": [
+            {"key": "single",  "label": "Single",  "icon": "◈",
+             "blurb": "One model. Fastest and cheapest."},
+            {"key": "council", "label": "Council", "icon": "⚖",
+             "blurb": "Several models answer; the best one wins."},
+            {"key": "race",    "label": "Race",    "icon": "⚡",
+             "blurb": "All at once; first usable answer wins."},
+            {"key": "cascade", "label": "Cascade", "icon": "↗",
+             "blurb": "Cheap model first, escalate only if weak."},
+        ],
+        "council": {
+            "members": [council_mod.describe(m) for m in
+                        council_mod.build_members(settings.council_members)],
+            "judge": settings.council_judge or "heuristic",
+            "default_strategy": settings.default_strategy,
+        },
         "modes": modes_mod.catalogue(),
         "tools": [{"name": t.name, "icon": t.icon, "dangerous": t.dangerous,
                    "description": t.description} for t in active],
@@ -118,6 +136,21 @@ async def health() -> dict:
     ok, detail = await provider.health()
     return {"provider": provider.name, "label": provider.label,
             "ok": ok, "detail": detail, "notes": notes}
+
+
+@app.get("/api/council")
+async def council_status() -> dict:
+    """Which council members can actually serve right now, and why not."""
+    members = council_mod.build_members(settings.council_members)
+    live, dropped = await council_mod.healthy_members(members)
+    return {
+        "configured": [council_mod.describe(m) for m in members],
+        "live": [council_mod.describe(m) for m in live],
+        "dropped": dropped,
+        "judge": settings.council_judge or "heuristic",
+        "default_strategy": settings.default_strategy,
+        "usable": len(live) >= 1,
+    }
 
 
 @app.get("/api/prompt")
@@ -328,7 +361,8 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         yield f"data: {json.dumps({'type': 'conversation', 'data': {'id': cid}})}\n\n"
         try:
             async for event in agent.run(provider, cid, history, req.mode,
-                                         settings.user_name, notes):
+                                         settings.user_name, notes,
+                                         strategy=req.strategy):
                 yield f"data: {json.dumps({'type': event.type, 'data': event.data})}\n\n"
         except asyncio.CancelledError:
             raise

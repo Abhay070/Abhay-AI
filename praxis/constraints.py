@@ -205,12 +205,22 @@ def verify(response: str, constraints: list[Constraint]) -> list[Violation]:
         return violations
 
     parsed = None
+    # A per-item count implies structured output even when the request never
+    # said the word "JSON" — "every description must be 8 words" only makes
+    # sense over items. Try parsing regardless, or the check silently no-ops.
+    if any(c.kind == "word_count" and c.spec.get("per_item") for c in constraints):
+        try:
+            parsed = json.loads(_strip_code_fences(response))
+        except json.JSONDecodeError:
+            parsed = None
+
     for c in constraints:
         if c.kind == "json":
             body = _strip_code_fences(response)
             try:
                 parsed = json.loads(body)
             except json.JSONDecodeError as e:
+                parsed = None
                 violations.append(Violation(
                     c, f"the response is not valid JSON ({e.msg} at line {e.lineno})"))
                 continue

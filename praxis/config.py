@@ -86,6 +86,22 @@ class Settings:
     # violations to repair. Models cannot count their own characters; code can.
     enable_constraint_check: bool = env_bool("ENABLE_CONSTRAINT_CHECK", True)
     max_constraint_retries: int = env_int("MAX_CONSTRAINT_RETRIES", 2)
+
+    # --- the council -------------------------------------------------------
+    # Several models answer the same question; the best answer wins. See
+    # praxis/council.py. Members are "backend:model" specs, comma separated.
+    # Unreachable members are dropped, so listing a local model alongside
+    # hosted ones is safe: it simply sits out when the machine is off.
+    council_members: str = env(
+        "COUNCIL_MEMBERS",
+        "groq:llama-3.3-70b-versatile,gemini:gemini-2.0-flash,ollama:llama3.2")
+    # Who arbitrates. Empty falls back to a stated heuristic.
+    council_judge: str = env("COUNCIL_JUDGE", "")
+    # single | race | council | cascade
+    default_strategy: str = env("DEFAULT_STRATEGY", "single")
+    council_timeout: float = float(env("COUNCIL_TIMEOUT", "90"))
+    # Cascade escalates to this when the first answer looks weak.
+    cascade_strong: str = env("CASCADE_STRONG", "groq:llama-3.3-70b-versatile")
     enable_memory: bool = env_bool("ENABLE_MEMORY", True)
     enable_web: bool = env_bool("ENABLE_WEB", True)
     # Off by default: it executes model-written code on your machine.

@@ -495,6 +495,32 @@ def get_provider(name: str | None = None) -> Provider:
     return cls()
 
 
+def from_spec(spec: str) -> Provider:
+    """Build a provider from a "backend:model" string, e.g. "groq:llama-3.3-70b".
+
+    The council needs several differently-configured providers alive at once,
+    which get_provider() cannot express because it reads one model per backend
+    out of the environment."""
+    spec = spec.strip()
+    if not spec:
+        raise ProviderError("Empty provider spec")
+    backend, _, model = spec.partition(":")
+    provider = get_provider(backend.strip())
+    if model.strip():
+        # Every backend keeps its model on `.model`; scratch and demo have none.
+        if hasattr(provider, "model"):
+            provider.model = model.strip()
+        else:
+            raise ProviderError(f"'{backend}' does not take a model name")
+    return provider
+
+
+def describe(provider: Provider) -> str:
+    """A stable label for one configured provider, for display and dedupe."""
+    model = getattr(provider, "model", "")
+    return f"{provider.name}:{model}" if model else provider.name
+
+
 def catalogue() -> list[dict]:
     out = []
     for key, cls in PROVIDERS.items():
