@@ -184,24 +184,38 @@ def _heuristic(candidates: list[Candidate]) -> tuple[Candidate, str]:
     """Fallback when no judge is available or the judge fails.
 
     Deliberately simple and stated out loud rather than pretending to be
-    clever: prefer answers that hedge honestly over ones that don't, then
-    prefer the faster model. Never silently prefer the longest — length is
-    the single most misleading proxy for quality."""
+    clever. Three terms, in order:
+
+    1. Substance. An answer that actually engages beats one that does not.
+       This term is first because without it the other two decided nothing on
+       a field where one member said "I'm not sure about that one" and another
+       gave a correct, specific answer — neither matched an honesty marker, so
+       the tie fell through to elapsed time, which was zero for both, and the
+       winner became *whichever member was listed first*. Position is not a
+       quality signal.
+    2. Honesty. Among answers that engage, one that admits a limit beats one
+       that cannot conceive of having any. An honest hedge really is worth more
+       than a confident fabrication — but only once both are saying something.
+    3. Speed. A genuine tie goes to the faster model.
+
+    Never prefer the longest. Length is the single most misleading proxy for
+    quality there is."""
     usable = [c for c in candidates if c.usable]
     if not usable:
         return candidates[0], "no member produced a usable answer"
 
-    def score(c: Candidate) -> tuple[int, float]:
+    def score(c: Candidate) -> tuple[int, int, float]:
         text = c.text.lower()
-        # An answer that admits a limit is more trustworthy than one that
-        # cannot conceive of one.
+        substantive = 0 if looks_weak(c.text)[0] else 1
         honest = any(p in text for p in (
             "i don't know", "i do not know", "not certain", "unverified",
             "could not verify", "no record of", "does not exist"))
-        return (1 if honest else 0, -c.elapsed)
+        return (substantive, 1 if honest else 0, -c.elapsed)
 
     best = max(usable, key=score)
-    return best, f"picked by fallback heuristic ({len(usable)} usable answers)"
+    why = ("engaged with the question" if score(best)[0]
+           else "least evasive of a weak field")
+    return best, f"fallback heuristic: {why} ({len(usable)} usable answers)"
 
 
 async def judge(judge_provider: Provider | None, question: str,

@@ -178,10 +178,41 @@ def test_council_falls_back_on_unparseable_verdict():
 
 
 def test_council_single_usable_candidate_short_circuits():
-    cands = [council.Candidate("A", "a", "only answer"),
+    """One survivor with a real answer needs no judge — there is nothing to
+    compare it against."""
+    cands = [council.Candidate("A", "a", "George M. Dallas was Polk's Vice "
+                                         "President, and he broke the tie on "
+                                         "the Walker Tariff of 1846."),
              council.Candidate("B", "b", "", error="down")]
     v = asyncio.run(council.judge(None, "q", cands))
     assert v.method == "only-candidate" and v.winner.label == "A"
+    assert not v.no_consensus
+
+
+def test_a_lone_weak_candidate_is_not_a_verdict():
+    """One survivor is not a consensus, and a weak survivor is not an answer.
+    This path used to skip the check and hand a hedge back wearing a verdict."""
+    cands = [council.Candidate("A", "a", "I'm not sure."),
+             council.Candidate("B", "b", "", error="down")]
+    v = asyncio.run(council.judge(None, "q", cands))
+    assert v.no_consensus, v.method
+    assert v.method == "no-consensus"
+    # The answer still comes back. Withholding it is the other failure.
+    assert v.winner.text.strip()
+
+
+def test_no_consensus_never_fires_on_a_field_with_a_good_answer():
+    """The label has to mean something, which means it must not appear when a
+    real answer is present."""
+    cands = [
+        council.Candidate("A", "a", "I'm not sure about that one, sorry."),
+        council.Candidate("B", "b", "Canberra is the capital of Australia. It "
+                                    "was chosen as a compromise between Sydney "
+                                    "and Melbourne, which both wanted it."),
+    ]
+    v = asyncio.run(council.judge(None, "q", cands))
+    assert not v.no_consensus, (v.method, v.reason)
+    assert v.winner.label == "B", v.winner.label
 
 
 def test_race_returns_the_fastest():
