@@ -68,8 +68,9 @@
         <textarea id="input" rows="1" placeholder="Ask anything. ⌘K for commands." autofocus></textarea>
         <div class="attachments hidden" id="attachments"></div>
         <div class="composer-bar">
-          <button class="btn-icon" id="attachBtn" title="Attach a file">⊕</button>
-          <input type="file" id="fileInput" class="hidden">
+          <button class="btn attach-btn" id="attachBtn"
+                  title="Attach a file — or drag one anywhere">⊕ Attach</button>
+          <input type="file" id="fileInput" class="hidden" multiple>
           <span class="chip" id="toolChip" title="Tools available"></span>
           <div class="spacer"></div>
           <button class="btn-icon hidden" id="stopBtn" title="Stop">■</button>

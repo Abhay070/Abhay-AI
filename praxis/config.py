@@ -81,6 +81,11 @@ class Settings:
     max_tool_rounds: int = env_int("MAX_TOOL_ROUNDS", 6)
 
     enable_tools: bool = env_bool("ENABLE_TOOLS", True)
+    # Check answers against constraints the request actually stated (letter
+    # exclusions, word counts, JSON validity) and hand the model its specific
+    # violations to repair. Models cannot count their own characters; code can.
+    enable_constraint_check: bool = env_bool("ENABLE_CONSTRAINT_CHECK", True)
+    max_constraint_retries: int = env_int("MAX_CONSTRAINT_RETRIES", 2)
     enable_memory: bool = env_bool("ENABLE_MEMORY", True)
     enable_web: bool = env_bool("ENABLE_WEB", True)
     # Off by default: it executes model-written code on your machine.

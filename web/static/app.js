@@ -566,6 +566,26 @@ function handleEvent(evt, assistant, body, toolBox) {
       toast('Remembered: ' + d.content.slice(0, 52));
       break;
 
+    // A checker found the answer broke a constraint the request stated, and
+    // the model is rewriting it. Clear what streamed so far — showing the
+    // rejected draft above its replacement would just be confusing.
+    case 'constraint_retry':
+      assistant.content = '';
+      assistant.tools = [];
+      toolBox.innerHTML = '';
+      body.innerHTML = '';
+      body.classList.add('caret');
+      toast('Constraint not met — rewriting (attempt ' + d.attempt + ')');
+      break;
+
+    case 'constraint_ok':
+      toast('Constraint satisfied on attempt ' + d.attempts);
+      break;
+
+    case 'constraint_failed':
+      toast('Could not meet the constraint after ' + d.attempts + ' attempts');
+      break;
+
     case 'done':
       assistant.id = d.message_id;
       assistant.meta = Object.assign({}, assistant.meta, d);
@@ -859,7 +879,7 @@ $('providerPill').onclick = openSettings;
 $('stopBtn').onclick = () => { if (state.abort) state.abort.abort(); };
 $('attachBtn').onclick = () => $('fileInput').click();
 $('fileInput').onchange = (e) => {
-  if (e.target.files[0]) uploadFile(e.target.files[0]);
+  Array.from(e.target.files).forEach(uploadFile);
   e.target.value = '';
 };
 
@@ -904,10 +924,41 @@ document.addEventListener('click', (e) => {
   });
 });
 
+// Drag-and-drop, with a visible target. dragleave fires constantly as the
+// pointer crosses child elements, so track depth rather than trusting one event.
+let dragDepth = 0;
+
+function showDropzone() {
+  if (document.querySelector('.dropzone')) return;
+  const z = el('div', 'dropzone');
+  z.innerHTML = '<div class="dropzone-card">' +
+    '<div class="big">▤</div>' +
+    '<div class="lab">Drop to attach</div>' +
+    '<div class="sub">Code, CSV, Markdown, JSON, text or PDF</div></div>';
+  document.body.appendChild(z);
+}
+function hideDropzone() {
+  dragDepth = 0;
+  const z = document.querySelector('.dropzone');
+  if (z) z.remove();
+}
+
+document.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+  e.preventDefault();
+  dragDepth++;
+  showDropzone();
+});
 document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) hideDropzone();
+});
 document.addEventListener('drop', (e) => {
   e.preventDefault();
-  if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+  hideDropzone();
+  const files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
+  files.forEach(uploadFile);   // multiple at once, not just the first
 });
 
 boot().catch(e => {

@@ -31,6 +31,8 @@ from typing import AsyncIterator
 from . import modes as modes_mod
 from . import tools as toolkit
 from .config import Settings
+from .constraints import correction_prompt, detect as detect_constraints
+from .constraints import verify as verify_constraints
 from .identity import build_system_prompt
 from .providers import Provider, ProviderError
 
@@ -148,29 +150,16 @@ class Agent:
 
     # -- the loop ----------------------------------------------------------
 
-    async def run(self, provider: Provider, conversation_id: str, history: list[dict],
-                  mode_key: str, user_name: str = "",
-                  notes: list[str] | None = None) -> AsyncIterator[Event]:
-        started = time.time()
-        messages, memories, active_tools = self.compose(history, mode_key, user_name)
+    async def _one_pass(self, provider: Provider, messages: list[dict],
+                        tool_names: set[str], conversation_id: str,
+                        out: dict) -> AsyncIterator[Event]:
+        """One full generation, including any tool rounds it needs.
 
-        if memories:
-            self.store.touch_memories([m["id"] for m in memories])
-
-        yield Event("start", {
-            "provider": provider.name,
-            "provider_label": provider.label,
-            "mode": mode_key,
-            "memories_used": len(memories),
-            "tools_available": [t.name for t in active_tools],
-            "notes": notes or [],
-        })
-
-        tool_names = {t.name for t in active_tools}
-        visible = ""       # what the user sees, tool syntax removed
-        prompt_chars = sum(len(m["content"]) for m in messages)
-        completion_chars = 0
+        Writes the finished visible text and counters into `out` rather than
+        returning them, because an async generator cannot do both."""
+        visible = ""
         rounds = 0
+        completion_chars = 0
 
         while True:
             buffer = ""
@@ -206,10 +195,12 @@ class Agent:
                             call_found = parsed[0]
                             break
             except ProviderError as e:
+                out["error"] = str(e)
                 yield Event("error", {"message": str(e)})
                 return
             except Exception as e:
-                yield Event("error", {"message": f"{type(e).__name__}: {e}"})
+                out["error"] = f"{type(e).__name__}: {e}"
+                yield Event("error", {"message": out["error"]})
                 return
 
             if call_found is None:
@@ -260,17 +251,104 @@ class Agent:
                            f"using this result. Do not repeat the tool call.",
             })
 
-        final = toolkit.strip_calls(visible).strip()
+        out["text"] = toolkit.strip_calls(visible).strip()
+        out["rounds"] = rounds
+        out["completion_chars"] = completion_chars
+
+    async def run(self, provider: Provider, conversation_id: str, history: list[dict],
+                  mode_key: str, user_name: str = "",
+                  notes: list[str] | None = None) -> AsyncIterator[Event]:
+        started = time.time()
+        messages, memories, active_tools = self.compose(history, mode_key, user_name)
+
+        if memories:
+            self.store.touch_memories([m["id"] for m in memories])
+
+        last_user = next((m["content"] for m in reversed(history)
+                          if m["role"] == "user"), "")
+        constraints = (detect_constraints(last_user)
+                       if self.settings.enable_constraint_check else [])
+
+        yield Event("start", {
+            "provider": provider.name,
+            "provider_label": provider.label,
+            "mode": mode_key,
+            "memories_used": len(memories),
+            "tools_available": [t.name for t in active_tools],
+            "constraints": [c.description for c in constraints],
+            "notes": notes or [],
+        })
+
+        tool_names = {t.name for t in active_tools}
+        prompt_chars = sum(len(m["content"]) for m in messages)
+        completion_chars = 0
+        total_rounds = 0
+        attempts = 0
+        final = ""
+        working = list(messages)
+
+        # Generate, then check the answer against any constraint the request
+        # actually stated. A model cannot count its own letters mid-generation;
+        # a checker can, in microseconds, and hand back the specific defect.
+        for attempt in range(1 + self.settings.max_constraint_retries):
+            attempts = attempt + 1
+            if attempt:
+                yield Event("constraint_retry", {
+                    "attempt": attempts,
+                    "violations": [v.detail for v in violations],
+                })
+
+            out: dict = {}
+            async for event in self._one_pass(provider, working, tool_names,
+                                              conversation_id, out):
+                yield event
+            if "error" in out:
+                return
+
+            final = out.get("text", "")
+            total_rounds += out.get("rounds", 0)
+            completion_chars += out.get("completion_chars", 0)
+
+            if not constraints:
+                break
+            violations = verify_constraints(final, constraints)
+            if not violations:
+                if attempt:
+                    yield Event("constraint_ok", {"attempts": attempts})
+                break
+
+            if attempt >= self.settings.max_constraint_retries:
+                # Out of retries. Say so rather than passing off a broken answer
+                # as compliant — an unflagged violation is the worse failure.
+                note = ("\n\n---\n_Constraint check failed after "
+                        f"{attempts} attempts: "
+                        + "; ".join(v.detail[:120] for v in violations)
+                        + ". The answer above does not meet what you asked for._")
+                final += note
+                yield Event("token", {"text": note})
+                yield Event("constraint_failed", {
+                    "attempts": attempts,
+                    "violations": [v.detail for v in violations],
+                })
+                break
+
+            working = list(messages) + [
+                {"role": "assistant", "content": final},
+                {"role": "user", "content": correction_prompt(violations)},
+            ]
+
         message_id = self.store.add_message(
             conversation_id, "assistant", final,
             {"mode": mode_key, "provider": provider.name,
-             "tool_rounds": rounds, "memories_used": len(memories)},
+             "tool_rounds": total_rounds, "memories_used": len(memories),
+             "constraint_attempts": attempts},
         )
 
         yield Event("done", {
             "message_id": message_id,
             "elapsed": round(time.time() - started, 2),
-            "tool_rounds": rounds,
+            "tool_rounds": total_rounds,
+            "constraint_attempts": attempts,
             "tokens": {
                 "prompt_estimate": prompt_chars // CHARS_PER_TOKEN,
                 "completion_estimate": completion_chars // CHARS_PER_TOKEN,

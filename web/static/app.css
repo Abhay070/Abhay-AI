@@ -604,3 +604,32 @@ pre.prompt-dump {
   .thread-inner, .composer-wrap { padding-left: 14px; padding-right: 14px; }
   .topbar-title { display: none; }
 }
+
+
+/* --- attachments ---------------------------------------------------------- */
+
+.attach-btn {
+  padding: 5px 11px; font-size: 12.5px; border-radius: 8px;
+  color: var(--text-dim); border-color: var(--border);
+}
+.attach-btn:hover { color: var(--blue); border-color: var(--blue); }
+
+/* Drag a file anywhere over the window and the target is unmissable. An
+   invisible drop zone is a feature nobody finds. */
+.dropzone {
+  position: fixed; inset: 0; z-index: 300;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  backdrop-filter: blur(3px);
+  display: grid; place-items: center;
+  border: 3px dashed var(--blue);
+}
+.dropzone-card {
+  background: var(--bg-raised); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); padding: 26px 34px; text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+.dropzone-card .big { font-size: 30px; color: var(--blue); margin-bottom: 8px; }
+.dropzone-card .lab { font-weight: 620; font-size: 15px; }
+.dropzone-card .sub {
+  font-size: 12.5px; color: var(--text-dim); margin-top: 5px;
+}

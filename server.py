@@ -267,15 +267,33 @@ async def upload(file: UploadFile = File(...),
 
 
 def _extract_pdf(raw: bytes) -> str:
+    # BaseException, not Exception, and that is deliberate. pypdf imports
+    # `cryptography`, whose Rust bindings raise pyo3's PanicException on a
+    # broken install — and PanicException subclasses BaseException specifically
+    # so it dodges ordinary handlers. Catching only Exception here returns a
+    # bare 500 with a Rust stack trace instead of a usable message. Scoped to
+    # this one import so nothing else is swallowed.
     try:
         import io
 
         from pypdf import PdfReader
-    except ImportError:
+    except BaseException as e:
         raise HTTPException(
-            415, "PDF support needs pypdf. Install it with: pip install pypdf")
-    reader = PdfReader(io.BytesIO(raw))
-    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+            415, f"PDF support is unavailable ({type(e).__name__}). Install it "
+                 "with: pip install pypdf — every other supported file type "
+                 "still works.")
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        text = "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as e:
+        raise HTTPException(422, f"Could not read that PDF: {type(e).__name__}. "
+                                 "It may be encrypted, corrupt, or scanned images "
+                                 "with no text layer.")
+    if not text.strip():
+        raise HTTPException(
+            422, "That PDF has no extractable text — it is probably scanned "
+                 "images. OCR it first, then upload.")
+    return text
 
 
 # -- chat -------------------------------------------------------------------
