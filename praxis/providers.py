@@ -581,16 +581,41 @@ def get_provider(name: str | None = None) -> Provider:
 
 
 def from_spec(spec: str) -> Provider:
-    """Build a provider from a "backend:model" string, e.g. "groq:llama-3.3-70b".
+    """Build a provider from a spec string.
+
+        groq:llama-3.3-70b-versatile
+        ollama:qwen2.5:14b                    (model names may contain colons)
+        openai:mistral-7b@http://localhost:1234/v1
 
     The council needs several differently-configured providers alive at once,
     which get_provider() cannot express because it reads one model per backend
-    out of the environment."""
+    from the environment.
+
+    The @base-url suffix exists because "several OpenAI-compatible endpoints"
+    is a real configuration — LM Studio beside vLLM beside OpenRouter — and
+    without it every such member would inherit the single OPENAI_BASE_URL and
+    silently become the same backend three times over."""
     spec = spec.strip()
     if not spec:
         raise ProviderError("Empty provider spec")
+
+    # Split the URL off first: it contains colons that are not separators.
+    base_url = ""
+    if "@" in spec:
+        spec, _, base_url = spec.rpartition("@")
+        base_url = base_url.strip()
+        if not base_url.startswith(("http://", "https://")):
+            raise ProviderError(
+                f"'{base_url}' is not a base URL — expected http:// or https://")
+
     backend, _, model = spec.partition(":")
     provider = get_provider(backend.strip())
+
+    if base_url:
+        if not hasattr(provider, "base"):
+            raise ProviderError(f"'{backend}' does not take a base URL")
+        provider.base = base_url.rstrip("/")
+
     if model.strip():
         # Every backend keeps its model on `.model`; scratch and demo have none.
         if hasattr(provider, "model"):
@@ -601,9 +626,21 @@ def from_spec(spec: str) -> Provider:
 
 
 def describe(provider: Provider) -> str:
-    """A stable label for one configured provider, for display and dedupe."""
+    """A stable label for one configured provider, for display and dedupe.
+
+    Includes the host when a custom base URL is set, because two members that
+    differ only by endpoint must not collapse into one entry — the council
+    dedupes on this string."""
     model = getattr(provider, "model", "")
-    return f"{provider.name}:{model}" if model else provider.name
+    label = f"{provider.name}:{model}" if model else provider.name
+    # Only the generic openai backend needs its host shown. A named backend
+    # already implies its endpoint, so "groq:llama@api.groq.com" is noise.
+    if provider.name == "openai":
+        base = getattr(provider, "base", "")
+        default = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        if base and base.rstrip("/") != default.rstrip("/"):
+            label = f"{label}@{base.split('//', 1)[-1].split('/')[0]}"
+    return label
 
 
 def catalogue() -> list[dict]:
