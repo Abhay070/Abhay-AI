@@ -202,8 +202,10 @@ async def main() -> int:
         print(f"  {DIM}Each one printed the line to change above.{OFF}\n")
         return 1
     print(f"  {GREEN}Everything checks out.{OFF}")
-    print(f"  {DIM}Next: python tests/benchmark.py   (100 questions, scored){OFF}")
-    print(f"  {DIM}      python scripts/compare_modes.py \"your question\"{OFF}\n")
+    print(f"  {DIM}Next:{OFF}")
+    print(f"  {DIM}  python tests/benchmark.py            100 questions, scored{OFF}")
+    print(f"  {DIM}  python tests/test_reliability.py     recovery under injected failure{OFF}")
+    print(f"  {DIM}  python scripts/compare_modes.py \"…\"   the modes, side by side{OFF}\n")
     return 0
 
 
