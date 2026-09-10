@@ -359,7 +359,18 @@ def main() -> int:
         return 1
     print(f"Praxis benchmark — {len(questions)} questions, mode={args.mode}, "
           f"strategy={args.strategy}")
-    print(f"{DIM}backend: {health.get('detail')}{OFF}\n")
+    print(f"{DIM}backend: {health.get('detail')}{OFF}")
+
+    # A free tier meters tokens per minute, and every question is a fresh
+    # conversation costing roughly one system prompt plus one answer. Saying so
+    # up front is kinder than letting someone wonder why it is still going.
+    if "groq" in str(health.get("detail", "")).lower():
+        minutes = len(questions) * 3.5 / 8.0
+        print(f"{DIM}On Groq's free tier (8,000 tokens/minute) expect roughly "
+              f"{minutes:.0f} minutes. Praxis waits out each rate limit rather "
+              f"than failing;\n--pace 6 makes the run smoother, --section NAME "
+              f"runs twenty at a time.{OFF}")
+    print()
 
     results: list[Result] = []
     for i, question in enumerate(questions, 1):
