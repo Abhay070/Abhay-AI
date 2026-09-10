@@ -26,6 +26,7 @@ import json
 import os
 import random
 import re
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import AsyncIterator
@@ -39,6 +40,25 @@ ROOT = Path(__file__).resolve().parent.parent
 
 class ProviderError(RuntimeError):
     """Raised when a backend cannot serve a request. Triggers the fallback chain."""
+
+
+# A health probe costs a network round trip, and the interface asks for one
+# every time it loads. Cache briefly so opening Settings three times does not
+# mean nine requests, while still noticing a backend that died a minute ago.
+_HEALTH_TTL = 30.0
+_health_cache: dict[str, tuple[float, tuple[bool, str]]] = {}
+
+
+def _cached_health(key: str) -> tuple[bool, str] | None:
+    hit = _health_cache.get(key)
+    if hit and (time.monotonic() - hit[0]) < _HEALTH_TTL:
+        return hit[1]
+    return None
+
+
+def _remember_health(key: str, result: tuple[bool, str]) -> tuple[bool, str]:
+    _health_cache[key] = (time.monotonic(), result)
+    return result
 
 
 class Provider(ABC):
@@ -249,9 +269,34 @@ class OpenAICompatibleProvider(Provider):
             self.label = label
 
     async def health(self) -> tuple[bool, str]:
-        if not self.api_key and "localhost" not in self.base and "127.0.0.1" not in self.base:
+        """Actually reach the endpoint, rather than checking that a key exists.
+
+        The previous version only inspected configuration, so a port with
+        nothing listening on it reported healthy — which meant /api/council
+        showed a green dot for a dead backend and the council wasted a slot on
+        it every turn. A health check that cannot fail is not a health check."""
+        local = "localhost" in self.base or "127.0.0.1" in self.base
+        if not self.api_key and not local:
             return False, f"No API key set for {self.base}"
-        return True, f"{self.model} · {self.base}"
+
+        key = f"{self.name}|{self.base}|{self.model}"
+        cached = _cached_health(key)
+        if cached:
+            return cached
+
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        try:
+            async with httpx.AsyncClient(timeout=6) as client:
+                response = await client.get(f"{self.base}/models", headers=headers)
+        except httpx.HTTPError as e:
+            return _remember_health(
+                key, (False, f"unreachable at {self.base} ({type(e).__name__})"))
+        if response.status_code in (401, 403):
+            return _remember_health(key, (False, "rejected the API key"))
+        if response.status_code >= 400:
+            return _remember_health(
+                key, (False, f"HTTP {response.status_code} from {self.base}"))
+        return _remember_health(key, (True, f"{self.model} · {self.base}"))
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
@@ -296,7 +341,8 @@ class GroqProvider(OpenAICompatibleProvider):
     async def health(self) -> tuple[bool, str]:
         if not self.api_key:
             return False, "GROQ_API_KEY not set. Free key: console.groq.com"
-        return True, f"{self.model} · Groq"
+        ok, detail = await super().health()
+        return ok, (f"{self.model} · Groq" if ok else f"Groq: {detail}")
 
 
 class GeminiProvider(Provider):
@@ -313,7 +359,22 @@ class GeminiProvider(Provider):
     async def health(self) -> tuple[bool, str]:
         if not self.api_key:
             return False, "GEMINI_API_KEY not set. Free key: aistudio.google.com/apikey"
-        return True, f"{self.model} · Google AI Studio"
+        key = f"gemini|{self.model}"
+        cached = _cached_health(key)
+        if cached:
+            return cached
+        url = ("https://generativelanguage.googleapis.com/v1beta/models/"
+               f"{self.model}?key={self.api_key}")
+        try:
+            async with httpx.AsyncClient(timeout=6) as client:
+                response = await client.get(url)
+        except httpx.HTTPError as e:
+            return _remember_health(key, (False, f"unreachable ({type(e).__name__})"))
+        if response.status_code in (400, 401, 403):
+            return _remember_health(key, (False, "rejected the API key"))
+        if response.status_code >= 400:
+            return _remember_health(key, (False, f"HTTP {response.status_code}"))
+        return _remember_health(key, (True, f"{self.model} · Google AI Studio"))
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         if not self.api_key:
@@ -462,6 +523,30 @@ class ScratchProvider(Provider):
         ids = self._tok.encode((transcript + "\nASSISTANT:")[-1000:])
         idx = torch.tensor([ids or self._tok.encode("\n")], dtype=torch.long)
 
+        # Deliberately NOT threaded, and the measurements are worth recording
+        # because the obvious fix is the wrong one here.
+        #
+        # A synchronous forward pass holds the event loop, so three council
+        # members took 3.24x one member -- exactly sequential, while the
+        # interface promised parallel. The obvious remedy is to offload to a
+        # worker thread. Measured, that made things worse:
+        #
+        #   per-token to_thread : single-member 0.87s -> 2.17s, ratio 2.35x
+        #   whole-loop to_thread: single-member 0.87s -> 1.66s, ratio 2.34x
+        #
+        # The reason: this model is GIL-bound, not compute-bound. Running its
+        # forward pass in three threads takes 6.41x as long as one -- worse
+        # than sequential -- because at 800k parameters the time goes on Python
+        # dispatch, which holds the GIL, rather than on kernels that release
+        # it. Threads add contention and buy nothing.
+        #
+        # This does not affect any real backend. Ollama, Groq, Gemini and
+        # Claude are all reached over HTTP through httpx, which releases the
+        # loop for the whole network round trip, so the council is genuinely
+        # concurrent there (verified separately against a local HTTP model
+        # server). The scratch provider is a teaching artifact; it is the one
+        # backend where "parallel" does not hold, and single-member latency
+        # matters more for it than council throughput.
         for _ in range(400):
             cond = idx[:, -self._model.config.block_size:]
             with torch.no_grad():
@@ -472,7 +557,7 @@ class ScratchProvider(Provider):
             nxt = torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
             idx = torch.cat((idx, nxt), dim=1)
             yield self._tok.decode([nxt.item()])
-            await asyncio.sleep(0)  # let the event loop breathe
+            await asyncio.sleep(0)   # let other coroutines advance between tokens
 
 
 PROVIDERS: dict[str, type[Provider]] = {
