@@ -23,6 +23,7 @@ const state = {
   abort: null,
   attachments: [],
   waitTimer: null,
+  debug: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -195,6 +196,12 @@ async function boot() {
 
   document.documentElement.dataset.theme =
     localStorage.getItem('praxis.theme') || 'light';
+
+  // Two layers. Normal is the default: a quiet progress line and the answer.
+  // Debug shows the machinery — every tool, every check, every verdict. The
+  // machinery is always there; this only decides whether it is on screen.
+  state.debug = localStorage.getItem('praxis.debug') === '1';
+  applyDebug();
 }
 
 /* --- modes ---------------------------------------------------------------- */
@@ -606,9 +613,13 @@ async function stream(payload) {
 
   const node = $('threadInner').lastChild;
   const body = node.querySelector('.msg-body');
+  const activity = el('div', 'msg-activity');
+  activity.innerHTML = '<span class="pulse">●</span><span class="act-text">Thinking…</span>';
+  node.insertBefore(activity, body);
   const toolBox = el('div', 'msg-tools');
   node.insertBefore(toolBox, body);
   body.classList.add('caret');
+  assistant._activity = activity;
 
   const controller = new AbortController();
   state.abort = controller;
@@ -656,6 +667,7 @@ async function stream(payload) {
   } finally {
     clearInterval(state.waitTimer);
     state.waitTimer = null;
+    setActivity(assistant, '', true);
     body.classList.remove('caret');
     state.streaming = false;
     state.abort = null;
@@ -675,6 +687,14 @@ function renderCouncil(assistant, node) {
   if (assistant.council) node.insertBefore(councilNode(assistant.council), anchor);
   if (assistant.cascade) node.insertBefore(cascadeNode(assistant.cascade), anchor);
   scrollDown();
+}
+
+function setActivity(assistant, text, done) {
+  const a = assistant._activity;
+  if (!a) return;
+  if (done) { a.remove(); assistant._activity = null; return; }
+  const t = a.querySelector('.act-text');
+  if (t) t.textContent = text;
 }
 
 function handleEvent(evt, assistant, body, toolBox, node) {
@@ -699,11 +719,20 @@ function handleEvent(evt, assistant, body, toolBox, node) {
     // only thing left to render was the failure note. That is the blank bubble.
     case 'mode_breach':
       assistant.breach = d;
+      setActivity(assistant, 'Holding it to ' + d.mode + ' mode…');
       toast(d.mode + ' mode broke its promise — rewriting');
+      break;
+
+    // The answer stopped at "I don't know" without a way forward. It is being
+    // sent back for the next step. Debug shows what it stalled on.
+    case 'stalled':
+      assistant.stalled = d;
+      setActivity(assistant, 'Making sure it gives you a next step…');
       break;
 
     case 'token':
       if (state.waitTimer) { clearInterval(state.waitTimer); state.waitTimer = null; }
+      if (assistant._activity && !assistant.content) setActivity(assistant, '', true);
       assistant.content += d.text;
       body.innerHTML = renderMarkdown(assistant.content);
       body.classList.add('caret');
@@ -714,6 +743,7 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       const t = { name: d.name, args: d.args, icon: d.icon, pending: true };
       assistant.tools.push(t);
       toolBox.appendChild(toolNode(t));
+      setActivity(assistant, (d.label || 'Checking one detail') + '…');
       scrollDown();
       break;
     }
@@ -741,6 +771,7 @@ function handleEvent(evt, assistant, body, toolBox, node) {
     // the model is rewriting it. Clear what streamed so far — showing the
     // rejected draft above its replacement would just be confusing.
     case 'council_start': {
+      setActivity(assistant, 'Asking several models…');
       assistant.council = {
         strategy: d.strategy, members: d.members, dropped: d.dropped,
         entries: d.members.map((m, i) => ({
@@ -770,6 +801,7 @@ function handleEvent(evt, assistant, body, toolBox, node) {
         assistant.council.judging = true;
         toast('Judging with ' + d.judge);
       }
+      setActivity(assistant, 'Comparing the answers…');
       break;
 
     case 'council_verdict': {
@@ -797,6 +829,7 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       toolBox.innerHTML = '';
       body.innerHTML = '';
       body.classList.add('caret');
+      setActivity(assistant, 'Checking it meets what you asked…');
       toast('Constraint not met — rewriting (attempt ' + d.attempt + ')');
       break;
 
@@ -1338,6 +1371,20 @@ function toggleTheme() {
 
 function toggleSidebar() { $('sidebar').classList.toggle('collapsed'); }
 
+function applyDebug() {
+  document.documentElement.dataset.view = state.debug ? 'debug' : 'normal';
+  const btn = $('toggleDebug');
+  if (btn) btn.classList.toggle('active', state.debug);
+}
+
+function toggleDebug() {
+  state.debug = !state.debug;
+  localStorage.setItem('praxis.debug', state.debug ? '1' : '0');
+  applyDebug();
+  toast(state.debug ? 'Debug view — showing the machinery'
+                    : 'Normal view — the machinery runs quietly');
+}
+
 function exportChat() {
   if (!state.conversationId) { toast('Nothing to export yet'); return; }
   window.location = '/api/conversations/' + state.conversationId + '/export';
@@ -1349,6 +1396,7 @@ $('sendBtn').onclick = () => send();
 $('newChat').onclick = newChat;
 $('toggleSidebar').onclick = toggleSidebar;
 $('toggleTheme').onclick = toggleTheme;
+$('toggleDebug').onclick = toggleDebug;
 $('openMemory').onclick = openMemory;
 $('openSettings').onclick = openSettings;
 $('openPalette').onclick = openPalette;

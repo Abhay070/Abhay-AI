@@ -48,6 +48,18 @@ with sync_playwright() as p:
     check("btn: mode selectable", pg.locator("#modeLabel").inner_text() == "Founder",
           pg.locator("#modeLabel").inner_text())
 
+    # Normal / Debug: the machinery is always run, this only decides whether it
+    # is shown. Default is Normal.
+    check("view: defaults to normal",
+          pg.evaluate("document.documentElement.dataset.view") == "normal",
+          pg.evaluate("document.documentElement.dataset.view"))
+    pg.click("#toggleDebug"); pg.wait_for_timeout(300)
+    check("btn: debug view toggles",
+          pg.evaluate("document.documentElement.dataset.view") == "debug")
+    pg.click("#toggleDebug"); pg.wait_for_timeout(200)
+    check("btn: debug view toggles back",
+          pg.evaluate("document.documentElement.dataset.view") == "normal")
+
     theme_before = pg.evaluate("document.documentElement.dataset.theme")
     pg.click("#toggleTheme"); pg.wait_for_timeout(300)
     check("btn: theme toggle", pg.evaluate("document.documentElement.dataset.theme") != theme_before)
@@ -83,11 +95,15 @@ with sync_playwright() as p:
     pg.click("#modeBtn"); pg.wait_for_timeout(250)
     pg.locator("#modeMenu .mode-item").nth(0).click(); pg.wait_for_timeout(250)
 
-    # send a real message so message-level buttons exist
+    # send a real message so message-level buttons exist. Debug view first, so
+    # the tool panel is actually on screen — Normal view runs the same tools
+    # but keeps them behind the quiet activity line.
+    pg.evaluate("document.getElementById('toggleDebug').click()")
     pg.fill("#input", "what is 1920 x 1080")
     pg.click("#sendBtn")
     pg.wait_for_selector(".tool-run", timeout=30000); pg.wait_for_timeout(6000)
     check("flow: message sent + tool ran", pg.locator(".tool-run").count() >= 1)
+    pg.evaluate("document.getElementById('toggleDebug').click()")  # back to normal
     check("flow: conversation appears in sidebar", pg.locator(".conv").count() >= 1)
 
     pg.locator(".msg.assistant").first.hover(); pg.wait_for_timeout(250)
