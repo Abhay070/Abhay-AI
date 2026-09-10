@@ -42,6 +42,92 @@ class ProviderError(RuntimeError):
     """Raised when a backend cannot serve a request. Triggers the fallback chain."""
 
 
+class RateLimited(ProviderError):
+    """A quota was hit. Carries when the provider said to come back.
+
+    Separate from ProviderError because the correct response is different:
+    a rate limit is not a broken backend, it is a working one asking you to
+    wait. Free tiers hit this constantly — Groq's on-demand tier allows 8,000
+    tokens per minute — and an assistant that gives up on the first 429 is
+    unusable on exactly the tier most people start on."""
+
+    def __init__(self, message: str, retry_after: float = 0.0) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class EmptyAnswer(ProviderError):
+    """The request succeeded and produced no answer.
+
+    This has its own class because it used to be invisible. A reasoning model
+    streams its thinking in one field and its answer in another; when the
+    thinking consumes the whole output budget, the answer field never arrives,
+    the stream closes cleanly, and the product stores an empty string. The user
+    sees a blank reply and no error — the worst possible failure, because
+    nothing anywhere says what went wrong."""
+
+
+# Models that think before they answer. They stream chain-of-thought in a
+# separate field (`reasoning` / `reasoning_content`) and can spend an entire
+# output budget on it. Matched by name because no OpenAI-compatible endpoint
+# advertises the capability in its catalogue.
+REASONING_MODELS = re.compile(
+    r"gpt-oss|(^|[-/])o[1-4]($|[-.])|deepseek-r1|qwen3|magistral|"
+    r"thinking|reasoner|-r1", re.IGNORECASE)
+
+# "Please try again in 7.482s" — Groq puts the wait in the body, not only in
+# the Retry-After header.
+_RETRY_HINT = re.compile(r"try again in ([\d.]+)\s*(ms|s|m)?", re.IGNORECASE)
+
+
+def _retry_after(headers, body: str) -> float:
+    """How long the provider asked us to wait. 0 when it did not say."""
+    raw = headers.get("retry-after", "")
+    try:
+        if raw:
+            return float(raw)
+    except (TypeError, ValueError):
+        pass
+    match = _RETRY_HINT.search(body)
+    if not match:
+        return 0.0
+    value = float(match.group(1))
+    unit = (match.group(2) or "s").lower()
+    return value / 1000 if unit == "ms" else value * 60 if unit == "m" else value
+
+
+def _tidy(body: str) -> str:
+    """The human sentence out of a provider's JSON error, or the raw body.
+
+    Providers wrap one useful sentence in three layers of envelope. Showing the
+    envelope to the user makes a solvable problem look like a crash."""
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return body.strip()[:240]
+    error = data.get("error", data) if isinstance(data, dict) else {}
+    if isinstance(error, dict):
+        return str(error.get("message") or error)[:240]
+    return str(error)[:240]
+
+
+def _rejected_param(body: str) -> str:
+    """Which request parameter an endpoint just refused, if it named one.
+
+    OpenAI-compatible is a family resemblance, not a specification. `max_tokens`
+    and `reasoning_effort` are both understood by most of it and rejected by
+    some. When one is refused the fix is to drop it and try again, not to make
+    the user edit .env to discover which of a dozen services they picked is the
+    strict one."""
+    if not re.search(r"unsupported|unrecogni[sz]ed|unknown|not supported|"
+                     r"invalid|unexpected", body, re.IGNORECASE):
+        return ""
+    for name in ("reasoning_effort", "max_completion_tokens", "max_tokens"):
+        if name in body:
+            return name
+    return ""
+
+
 # A health probe costs a network round trip, and the interface asks for one
 # every time it loads. Cache briefly so opening Settings three times does not
 # mean nine requests, while still noticing a backend that died a minute ago.
@@ -229,6 +315,7 @@ class OllamaProvider(Provider):
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         payload = {"model": self.model, "messages": messages, "stream": True,
                    "options": {"temperature": 0.7}}
+        content_chars = thinking_chars = 0
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("POST", f"{self.host}/api/chat",
@@ -238,13 +325,25 @@ class OllamaProvider(Provider):
                         if not line.strip():
                             continue
                         data = json.loads(line)
-                        chunk = data.get("message", {}).get("content", "")
+                        message = data.get("message", {})
+                        # Local thinking models (deepseek-r1, qwen3) put the
+                        # scratchpad here. Counted, never shown — same reasoning
+                        # as the hosted case.
+                        thinking_chars += len(message.get("thinking") or "")
+                        chunk = message.get("content", "")
                         if chunk:
+                            content_chars += len(chunk)
                             yield chunk
                         if data.get("done"):
-                            return
+                            break
         except httpx.HTTPError as e:
             raise ProviderError(f"Ollama: {type(e).__name__}") from e
+        if content_chars == 0:
+            raise EmptyAnswer(
+                f"{self.model} returned no answer"
+                + (f" — {thinking_chars:,} characters of internal reasoning and "
+                   f"nothing else. Try a non-thinking model, or ask again."
+                   if thinking_chars else ". The model produced no text."))
 
 
 class OpenAICompatibleProvider(Provider):
@@ -265,8 +364,26 @@ class OpenAICompatibleProvider(Provider):
                                            "https://api.openai.com/v1")).rstrip("/")
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        # A ceiling on the answer, not on the conversation. It exists mostly to
+        # stop a reasoning model from spending an unbounded budget thinking.
+        self.max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "4096"))
+        # low | medium | high, or empty to leave the model's default alone.
+        # Sent only to models that understand it, and dropped automatically if
+        # an endpoint refuses it.
+        self.reasoning_effort = os.getenv("REASONING_EFFORT", "low").strip().lower()
+        if self.reasoning_effort in ("", "off", "none", "default"):
+            self.reasoning_effort = ""
         if label:
             self.label = label
+
+    def payload(self, messages: list[Message], drop: set[str]) -> dict:
+        body: dict = {"model": self.model, "messages": messages, "stream": True,
+                      "max_tokens": self.max_tokens}
+        if self.reasoning_effort and REASONING_MODELS.search(self.model):
+            body["reasoning_effort"] = self.reasoning_effort
+        for key in drop:
+            body.pop(key, None)
+        return body
 
     async def health(self) -> tuple[bool, str]:
         """Actually reach the endpoint, rather than checking that a key exists.
@@ -299,29 +416,107 @@ class OpenAICompatibleProvider(Provider):
         return _remember_health(key, (True, f"{self.model} · {self.base}"))
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
+        """Stream the answer, and refuse to return silence.
+
+        Three things here are not in the textbook version, and each one exists
+        because it broke in the user's hands:
+
+        `reasoning` is read but never yielded. A thinking model streams its
+        chain of thought in that field and its answer in `content`. Yielding
+        the thinking would put the model's scratchpad on screen as if it were
+        the reply; ignoring the field entirely — the previous behaviour — meant
+        that when the thinking used up the whole budget, the product stored an
+        empty string and showed a blank bubble with no error anywhere.
+
+        `finish_reason` is kept so that when nothing comes back we can say
+        which of the several possible reasons it was.
+
+        A run that yields no visible characters raises instead of returning.
+        An empty answer is a failure, and a failure that reports success is the
+        one bug a user cannot work around."""
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        payload = {"model": self.model, "messages": messages, "stream": True}
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("POST", f"{self.base}/chat/completions",
-                                         json=payload, headers=headers) as r:
-                    if r.status_code >= 400:
-                        body = (await r.aread()).decode()[:200]
-                        raise ProviderError(f"HTTP {r.status_code}: {body}")
-                    async for line in r.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        body = line[6:].strip()
-                        if body == "[DONE]":
-                            return
-                        try:
-                            delta = json.loads(body)["choices"][0].get("delta", {})
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
-                        if delta.get("content"):
-                            yield delta["content"]
-        except httpx.HTTPError as e:
-            raise ProviderError(f"{self.label}: {type(e).__name__}") from e
+        drop: set[str] = set()
+
+        while True:
+            content_chars = 0
+            thinking_chars = 0
+            finish = ""
+            retry_with_fewer_params = False
+
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                            "POST", f"{self.base}/chat/completions",
+                            json=self.payload(messages, drop),
+                            headers=headers) as r:
+                        if r.status_code >= 400:
+                            body = (await r.aread()).decode()[:400]
+                            refused = _rejected_param(body)
+                            if refused and refused not in drop:
+                                drop.add(refused)
+                                retry_with_fewer_params = True
+                            elif r.status_code == 429:
+                                raise RateLimited(
+                                    f"{self.label} rate limit: {_tidy(body)}",
+                                    _retry_after(r.headers, body))
+                            elif r.status_code == 404 and "model" in body.lower():
+                                raise ProviderError(
+                                    f"{self.model!r} is not a model this account "
+                                    f"can reach. Run  python scripts/list_models.py  "
+                                    f"to see what is actually available.")
+                            else:
+                                raise ProviderError(
+                                    f"HTTP {r.status_code}: {_tidy(body)}")
+                        else:
+                            async for line in r.aiter_lines():
+                                if not line.startswith("data: "):
+                                    continue
+                                body = line[6:].strip()
+                                if body == "[DONE]":
+                                    break
+                                try:
+                                    choice = json.loads(body)["choices"][0]
+                                except (json.JSONDecodeError, KeyError, IndexError):
+                                    continue
+                                finish = choice.get("finish_reason") or finish
+                                delta = choice.get("delta") or {}
+                                thinking = (delta.get("reasoning")
+                                            or delta.get("reasoning_content") or "")
+                                if thinking:
+                                    thinking_chars += len(thinking)
+                                if delta.get("content"):
+                                    content_chars += len(delta["content"])
+                                    yield delta["content"]
+            except httpx.HTTPError as e:
+                raise ProviderError(f"{self.label}: {type(e).__name__}") from e
+
+            if retry_with_fewer_params:
+                continue
+            if content_chars == 0:
+                raise EmptyAnswer(self.explain_silence(thinking_chars, finish))
+            return
+
+    def explain_silence(self, thinking_chars: int, finish: str) -> str:
+        """Say precisely why an answer never arrived, and what to change."""
+        if thinking_chars and finish == "length":
+            return (f"{self.model} spent its entire {self.max_tokens}-token budget "
+                    f"thinking ({thinking_chars:,} characters of reasoning) and "
+                    f"never started the answer. Set REASONING_EFFORT=low in .env, "
+                    f"or raise OPENAI_MAX_TOKENS.")
+        if thinking_chars:
+            return (f"{self.model} returned {thinking_chars:,} characters of "
+                    f"internal reasoning and no answer. This usually means the "
+                    f"question tripped its refusal path silently — try rephrasing, "
+                    f"or a different model.")
+        if finish == "length":
+            return (f"{self.model} hit the {self.max_tokens}-token output limit "
+                    f"before writing anything. Raise OPENAI_MAX_TOKENS.")
+        if finish == "content_filter":
+            return f"{self.label} blocked the answer with its content filter."
+        return (f"{self.model} returned an empty response"
+                + (f" (finish_reason: {finish})" if finish else "")
+                + ". Nothing was wrong with the request; the model simply "
+                  "produced no text.")
 
 
 class GroqProvider(OpenAICompatibleProvider):
@@ -392,12 +587,17 @@ class GeminiProvider(Provider):
 
         url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
                f"{self.model}:streamGenerateContent?alt=sse&key={self.api_key}")
+        content_chars = 0
+        finish = ""
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("POST", url, json=payload) as r:
                     if r.status_code >= 400:
-                        body = (await r.aread()).decode()[:200]
-                        raise ProviderError(f"HTTP {r.status_code}: {body}")
+                        body = (await r.aread()).decode()[:400]
+                        if r.status_code == 429:
+                            raise RateLimited(f"Gemini rate limit: {_tidy(body)}",
+                                              _retry_after(r.headers, body))
+                        raise ProviderError(f"HTTP {r.status_code}: {_tidy(body)}")
                     async for line in r.aiter_lines():
                         if not line.startswith("data: "):
                             continue
@@ -406,11 +606,24 @@ class GeminiProvider(Provider):
                         except json.JSONDecodeError:
                             continue
                         for cand in data.get("candidates", []):
+                            finish = cand.get("finishReason") or finish
                             for part in cand.get("content", {}).get("parts", []):
-                                if part.get("text"):
+                                # `thought` parts are the model's scratchpad,
+                                # not its answer. Skipped, but they do not count
+                                # as an answer having been given.
+                                if part.get("text") and not part.get("thought"):
+                                    content_chars += len(part["text"])
                                     yield part["text"]
         except httpx.HTTPError as e:
             raise ProviderError(f"Gemini: {type(e).__name__}") from e
+        if content_chars == 0:
+            reason = {
+                "SAFETY": "Gemini's safety filter blocked the answer.",
+                "RECITATION": "Gemini stopped: the answer looked like recitation.",
+                "MAX_TOKENS": "Gemini hit its output limit before writing anything.",
+            }.get(finish, f"{self.model} returned an empty response"
+                          + (f" (finishReason: {finish})" if finish else "") + ".")
+            raise EmptyAnswer(reason)
 
 
 class AnthropicProvider(Provider):

@@ -27,6 +27,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import AsyncIterator
 
 from . import modes as modes_mod
@@ -37,12 +38,17 @@ from . import contracts as contracts_mod
 from .constraints import correction_prompt, detect as detect_constraints
 from .constraints import verify as verify_constraints
 from .identity import build_system_prompt
-from .providers import Provider, ProviderError
+from .providers import Provider, ProviderError, RateLimited
 
 # Rough, and honest about it: ~4 characters per token holds well enough for
 # English to be useful as a budget gauge, and badly enough that we never present
 # it as exact.
 CHARS_PER_TOKEN = 4
+
+# However tight the budget, never send the model less than this much of
+# the question. A prompt trimmed below it is not a cheaper request, it is
+# a wasted one.
+MIN_QUESTION_CHARS = 1200
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "is", "are", "was", "were", "be",
@@ -113,10 +119,48 @@ def format_memories(memories: list[dict]) -> str:
     return "\n".join(f"- [{m['category']}] {m['content']}" for m in memories)
 
 
+
+def _shrink(messages: list[dict]) -> int:
+    """Drop the oldest turns in place, so the retry costs less than the try.
+
+    Mutates rather than returns because the caller is mid-stream and holding
+    the list. Never touches the system prompt or the turn being answered."""
+    turns = [i for i, m in enumerate(messages) if m["role"] != "system"]
+    if len(turns) <= 1:
+        return 0
+    # Half the history, rounded up, but always leaving the newest turn.
+    cut = max(1, (len(turns) - 1) // 2)
+    for index in reversed(turns[:cut]):
+        del messages[index]
+    return cut
+
+
 class Agent:
     def __init__(self, store, settings: Settings):
         self.store = store
         self.settings = settings
+
+    def rate_limit_advice(self, error, messages: list[dict], attempts: int) -> str:
+        """A rate limit the waiting could not fix, explained in terms of the fix.
+
+        Free tiers meter tokens per minute — Groq's on-demand tier allows 8,000
+        — and that allowance is spent by the *size* of each request, not the
+        number of them. A long conversation with a thinking model can cost more
+        per turn than the whole minute's allowance, at which point no amount of
+        waiting will ever let it through. Saying "rate limited" and stopping
+        leaves the user retrying something that cannot work."""
+        cost = sum(len(m["content"]) for m in messages) // CHARS_PER_TOKEN
+        lines = [str(error)]
+        lines.append(f"\n\nPraxis waited and retried {attempts} times. This turn "
+                     f"costs roughly {cost:,} tokens to send, before the answer.")
+        lines.append("Three things shrink it, in order of effect:")
+        lines.append("- Start a new conversation — history is resent every turn.")
+        lines.append("- Set `REASONING_EFFORT=low` in .env if your model thinks "
+                     "before answering; those tokens count too.")
+        lines.append("- Lower `MAX_PROMPT_TOKENS` in .env, or pick a smaller "
+                     "model with a larger allowance "
+                     "(`python scripts/list_models.py`).")
+        return "\n".join(lines)
 
     # -- prompt assembly ---------------------------------------------------
 
@@ -125,10 +169,19 @@ class Agent:
         """Build the message list actually sent to the model."""
         mode = modes_mod.get(mode_key)
 
+        budget_chars = self.settings.max_prompt_tokens * CHARS_PER_TOKEN
+
         tool_list, active_tools = "", []
         if self.settings.enable_tools:
             active_tools = toolkit.available(self.settings)
             tool_list = toolkit.describe(active_tools)
+            # Fourteen tools described in full is ~700 tokens on every request.
+            # When the whole budget is small — which is what a free tier's
+            # per-minute allowance amounts to — that is a quarter of it spent
+            # before the user has typed anything. Trade the worked examples for
+            # the room to hold a conversation.
+            if len(tool_list) > budget_chars * 0.15:
+                tool_list = toolkit.describe(active_tools, compact=True)
 
         memories: list[dict] = []
         memory_block = ""
@@ -144,12 +197,100 @@ class Agent:
             user_name=user_name or self.settings.user_name,
         )
 
-        trimmed = history[-self.settings.max_history:]
-        messages = [{"role": "system", "content": system}] + [
-            {"role": m["role"], "content": m["content"]}
-            for m in trimmed if m["role"] in ("user", "assistant")
-        ]
+        messages = [{"role": "system", "content": system}] + self.fit(history, system)
         return messages, memories, active_tools
+
+    # -- what actually fits ------------------------------------------------
+
+    def attachment_text(self, ref: dict) -> str:
+        """One attached file, as the model should see it.
+
+        The file's text is fetched here rather than carried in the message, so
+        that what the user sees in their own bubble stays what they typed. A
+        forty-page PDF pasted into the transcript is not a conversation."""
+        record = None
+        try:
+            record = self.store.get_file(ref.get("id", ""))
+        except Exception:
+            record = None
+
+        name = (record or {}).get("filename") or ref.get("filename") or "file"
+        text = ""
+        path = (record or {}).get("path")
+        if path:
+            try:
+                text = Path(path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+        if not text:
+            text = (record or {}).get("excerpt") or ""
+        if not text:
+            return (f"\n\n--- Attached file: {name} ---\n"
+                    f"[The text of this file could not be read back. Tell the "
+                    f"user the upload is no longer available.]")
+
+        cap = self.settings.attachment_chars
+        body, rest = text[:cap], max(0, len(text) - cap)
+        tail = (f"\n[This is the first {cap:,} of {len(text):,} characters. Call "
+                f"read_file with file_id \"{ref.get('id', '')}\" for the rest.]"
+                if rest else "")
+        return (f"\n\n--- Attached file: {name} "
+                f"(id: {ref.get('id', '')}, {len(text):,} characters) ---\n"
+                f"{body}{tail}")
+
+    def expand(self, message: dict) -> str:
+        """A stored turn, with any files it carried folded back in."""
+        refs = (message.get("meta") or {}).get("attachments") or []
+        if not refs:
+            return message["content"]
+        return message["content"] + "".join(self.attachment_text(r) for r in refs)
+
+    def fit(self, history: list[dict], system: str) -> list[dict]:
+        """Take as much recent history as the prompt budget allows.
+
+        MAX_HISTORY caps the number of turns, which says nothing about their
+        size. This caps the size, which is what a provider actually charges for
+        and what a free tier's tokens-per-minute limit actually measures.
+
+        The question being asked is never what gets dropped. That sounds
+        obvious and the first version of this got it wrong: it kept whatever it
+        reached first walking backwards, which is the last *assistant* turn
+        when the history ends with one. A large attachment on the user's turn
+        then pushed the question itself out of the prompt, and the model
+        answered a conversation it could no longer see the point of."""
+        turns = [m for m in history[-self.settings.max_history:]
+                 if m["role"] in ("user", "assistant")]
+        if not turns:
+            return []
+
+        budget = self.settings.max_prompt_tokens * CHARS_PER_TOKEN - len(system)
+        # From the newest user turn onward is the question and anything the
+        # assistant has already said about it. That block is non-negotiable.
+        anchor = max((i for i, m in enumerate(turns) if m["role"] == "user"),
+                     default=len(turns) - 1)
+        kept = [{"role": m["role"], "content": self.expand(m)}
+                for m in turns[anchor:]]
+
+        spent = sum(len(m["content"]) for m in kept)
+        if spent > budget:
+            # It does not fit even alone — so abridge it rather than drop it.
+            # The bulk is almost always an attachment on the user's turn, and
+            # the model can pull the rest back with read_file.
+            note = ("\n\n[…trimmed to fit the context budget. Call read_file for "
+                    "the full text of any attachment above.]")
+            others = spent - len(kept[0]["content"])
+            room = max(budget - others - len(note), MIN_QUESTION_CHARS)
+            kept[0]["content"] = kept[0]["content"][:room] + note
+            spent = sum(len(m["content"]) for m in kept)
+
+        budget -= spent
+        for m in reversed(turns[:anchor]):
+            body = self.expand(m)
+            if len(body) > budget:
+                break
+            budget -= len(body)
+            kept.insert(0, {"role": m["role"], "content": body})
+        return kept
 
     # -- the loop ----------------------------------------------------------
 
@@ -168,42 +309,77 @@ class Agent:
             buffer = ""
             emitted = 0        # how much of `buffer` has already been sent as tokens
             call_found = None
+            failed = ""
 
-            try:
-                async for chunk in provider.stream(messages):
-                    buffer += chunk
-                    completion_chars += len(chunk)
+            # A rate limit gets waited out rather than surfaced as a failure.
+            # On a free tier — 8,000 tokens a minute on Groq's on-demand tier —
+            # a 429 is the normal cost of asking two questions in quick
+            # succession, not a fault. The wait is narrated so the pause is
+            # explained instead of merely long.
+            for rl_attempt in range(1 + self.settings.max_rate_limit_retries):
+                buffer, emitted, call_found = "", 0, None
+                before = len(visible)
+                try:
+                    async for chunk in provider.stream(messages):
+                        buffer += chunk
+                        completion_chars += len(chunk)
 
-                    # Hold back text once a call block opens, so the raw JSON
-                    # never reaches the user's screen.
-                    open_at = buffer.find("<tool_call>", max(0, emitted - 12))
-                    safe_to = open_at if open_at != -1 else len(buffer)
-                    # Also hold back a possible partial "<tool_call" at the tail.
-                    if open_at == -1:
-                        tail = buffer[-12:]
-                        for i in range(len(tail)):
-                            if "<tool_call>".startswith(tail[i:]):
-                                safe_to = len(buffer) - len(tail) + i
+                        # Hold back text once a call block opens, so the raw JSON
+                        # never reaches the user's screen.
+                        open_at = buffer.find("<tool_call>", max(0, emitted - 12))
+                        safe_to = open_at if open_at != -1 else len(buffer)
+                        # Also hold back a possible partial "<tool_call" at the tail.
+                        if open_at == -1:
+                            tail = buffer[-12:]
+                            for i in range(len(tail)):
+                                if "<tool_call>".startswith(tail[i:]):
+                                    safe_to = len(buffer) - len(tail) + i
+                                    break
+
+                        if safe_to > emitted:
+                            text = buffer[emitted:safe_to]
+                            emitted = safe_to
+                            visible += text
+                            yield Event("token", {"text": text})
+
+                        if open_at != -1 and "</tool_call>" in buffer[open_at:]:
+                            parsed = toolkit.parse_calls(buffer)
+                            if parsed:
+                                call_found = parsed[0]
                                 break
+                except RateLimited as e:
+                    # Only safe to replay when this round put nothing on screen.
+                    spent = rl_attempt >= self.settings.max_rate_limit_retries
+                    if spent or len(visible) > before:
+                        failed = self.rate_limit_advice(e, messages, rl_attempt)
+                        break
+                    delay = min(max(e.retry_after, 2.0) + 0.5, 45.0)
+                    # Waiting alone only helps if the request would fit next
+                    # minute. A per-minute token allowance is spent by the size
+                    # of the request, so a conversation that has grown past the
+                    # allowance never fits, however long you wait. Shrink as
+                    # well as wait — the oldest turn is the one worth least.
+                    dropped = _shrink(messages)
+                    yield Event("rate_limited", {
+                        "seconds": round(delay, 1),
+                        "attempt": rl_attempt + 1,
+                        "of": self.settings.max_rate_limit_retries,
+                        "dropped_turns": dropped,
+                        "message": str(e),
+                    })
+                    await asyncio.sleep(delay)
+                    continue
+                except ProviderError as e:
+                    failed = str(e)
+                    break
+                except Exception as e:
+                    failed = f"{type(e).__name__}: {e}"
+                    break
+                break
 
-                    if safe_to > emitted:
-                        text = buffer[emitted:safe_to]
-                        emitted = safe_to
-                        visible += text
-                        yield Event("token", {"text": text})
-
-                    if open_at != -1 and "</tool_call>" in buffer[open_at:]:
-                        parsed = toolkit.parse_calls(buffer)
-                        if parsed:
-                            call_found = parsed[0]
-                            break
-            except ProviderError as e:
-                out["error"] = str(e)
-                yield Event("error", {"message": str(e)})
-                return
-            except Exception as e:
-                out["error"] = f"{type(e).__name__}: {e}"
-                yield Event("error", {"message": out["error"]})
+            if failed:
+                out["error"] = failed
+                yield Event("error", {"message": failed})
                 return
 
             if call_found is None:
@@ -426,7 +602,8 @@ class Agent:
             if attempt:
                 yield Event("constraint_retry", {
                     "attempt": attempts,
-                    "violations": [v.detail for v in violations],
+                    "violations": [v.detail for v in violations]
+                                  + [f"{mode_key} mode: {b.detail}" for b in breaches],
                 })
 
             out: dict = {}
@@ -448,6 +625,22 @@ class Agent:
             final = out.get("text", "")
             total_rounds += out.get("rounds", 0)
             completion_chars += out.get("completion_chars", 0)
+
+            # A blank answer with no error is the one failure a user cannot
+            # diagnose or work around: the turn reports success, the bubble is
+            # empty, and nothing anywhere says why. Providers now raise instead
+            # of returning silence, so reaching here means something slipped
+            # through — say so on screen rather than storing the blank.
+            if not final.strip():
+                note = ("_The model finished without writing an answer. Nothing "
+                        "failed on the way there, so this is the model itself "
+                        "producing no text — try asking again, or switch model "
+                        "in Settings._")
+                yield Event("empty_answer", {"strategy": strategy,
+                                             "provider": provider.name})
+                yield Event("token", {"text": note})
+                final = note
+                break
 
             violations = verify_constraints(final, constraints) if constraints else []
             breaches = (contracts_mod.check(mode_key, final)

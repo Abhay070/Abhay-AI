@@ -73,9 +73,20 @@ class Settings:
     db_path: Path = Path(env("DB_PATH", str(ROOT / "data" / "praxis.db")))
     upload_dir: Path = Path(env("UPLOAD_DIR", str(ROOT / "data" / "uploads")))
 
-    # How many prior turns to resend. Context windows are finite; this is the
-    # crudest possible answer and it is enough until it isn't.
+    # How many prior turns to resend. A ceiling on count, not on size.
     max_history: int = env_int("MAX_HISTORY", 24)
+    # The real budget. Counting turns is a poor proxy for cost: twenty short
+    # turns and twenty turns each carrying a PDF are the same number and wildly
+    # different prompts. Free tiers notice the difference as an HTTP 429 —
+    # Groq's on-demand tier allows 8,000 tokens per minute, prompt included —
+    # so the default is sized to leave room for an answer inside that.
+    max_prompt_tokens: int = env_int("MAX_PROMPT_TOKENS", 4000)
+    # How much of an attached file rides along in the prompt. The rest stays on
+    # disk and the model pulls it with read_file when it needs it.
+    attachment_chars: int = env_int("ATTACHMENT_CHARS", 5000)
+    # A rate limit is not a broken backend; it is a working one asking you to
+    # wait. Wait, then, rather than failing the turn.
+    max_rate_limit_retries: int = env_int("MAX_RATE_LIMIT_RETRIES", 3)
     # Ceiling on tool-call rounds in a single turn, so a confused model cannot
     # spin forever burning tokens.
     max_tool_rounds: int = env_int("MAX_TOOL_ROUNDS", 6)

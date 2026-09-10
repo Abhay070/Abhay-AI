@@ -51,7 +51,19 @@ class Tool:
     requires: str = ""                # a settings flag that must be on
     dangerous: bool = False
 
-    def signature(self) -> str:
+    def signature(self, compact: bool = False) -> str:
+        """How this tool is described to the model.
+
+        The compact form exists because the full one is not free. Fourteen
+        tools with worked examples is 700 tokens on every single request — a
+        quarter of a free tier's whole per-minute allowance, spent before the
+        user has typed anything. The short form keeps the name, the argument
+        names and the first clause of the description, which is enough for a
+        model to pick the right tool; the long form is for when there is budget
+        to spend teaching it the nuances."""
+        if compact:
+            gist = re.split(r"(?:\.|\||\s—\s|\s-\s)", self.description)[0].strip()
+            return f"- {self.name}({', '.join(self.args) or ''}): {gist}"
         if not self.args:
             return f"- {self.name}: {self.description} (no arguments)"
         arg_str = ", ".join(f"{k} ({v})" for k, v in self.args.items())
@@ -76,8 +88,8 @@ def available(settings) -> list[Tool]:
     return out
 
 
-def describe(tools: list[Tool]) -> str:
-    return "\n".join(t.signature() for t in tools)
+def describe(tools: list[Tool], compact: bool = False) -> str:
+    return "\n".join(t.signature(compact) for t in tools)
 
 
 def parse_calls(text: str) -> list[dict]:

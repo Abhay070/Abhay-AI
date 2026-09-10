@@ -52,6 +52,19 @@ app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
 
 # -- models -----------------------------------------------------------------
 
+class Attachment(BaseModel):
+    """A file the user attached, by reference.
+
+    By reference deliberately. Pasting a PDF's text into the message means the
+    user's own transcript is mostly PDF — which is what happened the first time
+    someone attached one. The id travels; the text is folded into the prompt at
+    compose time and stays out of the visible turn."""
+
+    id: str
+    filename: str = ""
+    characters: int = 0
+
+
 class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str
@@ -59,6 +72,7 @@ class ChatRequest(BaseModel):
     provider: str | None = None
     strategy: str | None = None
     regenerate_from: str | None = None
+    attachments: list[Attachment] = []
 
 
 class ConversationPatch(BaseModel):
@@ -334,12 +348,14 @@ def _extract_pdf(raw: bytes) -> str:
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> StreamingResponse:
     cid = req.conversation_id
+    title_from = req.message.strip() or (
+        req.attachments[0].filename if req.attachments else "")
     if not cid or not store.get_conversation(cid):
-        cid = store.create_conversation(agent.derive_title(req.message), req.mode)
+        cid = store.create_conversation(agent.derive_title(title_from), req.mode)
     else:
         conversation = store.get_conversation(cid)
         if conversation["title"] == "New conversation":
-            store.update_conversation(cid, title=agent.derive_title(req.message))
+            store.update_conversation(cid, title=agent.derive_title(title_from))
         store.update_conversation(cid, mode=req.mode)
 
     # Regenerating: drop the old branch before adding the new turn.
@@ -347,8 +363,10 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         store.truncate_after(cid, req.regenerate_from)
         store.delete_message(req.regenerate_from)
 
-    if req.message.strip():
-        store.add_message(cid, "user", req.message)
+    if req.message.strip() or req.attachments:
+        meta = ({"attachments": [a.model_dump() for a in req.attachments]}
+                if req.attachments else None)
+        store.add_message(cid, "user", req.message, meta)
 
     history = store.get_messages(cid)
     provider, notes = await providers.resolve(

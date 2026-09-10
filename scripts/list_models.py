@@ -163,6 +163,19 @@ def main() -> int:
         ))
         print(f"\n{GREEN}To use one, put this in your .env:{OFF}")
         print(f"  {model_var}={pick}")
+
+        # A thinking model streams its scratchpad in a separate field and
+        # charges you for it. On a free tier that is the difference between an
+        # answer and an HTTP 429 — and if the thinking runs long enough, the
+        # answer field never arrives at all and the reply comes back blank.
+        from praxis.providers import REASONING_MODELS
+        if REASONING_MODELS.search(pick):
+            print(f"  REASONING_EFFORT=low")
+            print(f"\n{YELLOW}{pick} thinks before it answers.{OFF} Those thinking "
+                  f"tokens\ncount against a free tier's per-minute allowance and "
+                  f"can eat the whole\noutput budget. REASONING_EFFORT=low keeps "
+                  f"it brief. Raise it to\nmedium or high once you are on a paid "
+                  f"tier.")
         print(f"\n{DIM}Then restart:  python server.py{OFF}")
     return 0
 

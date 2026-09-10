@@ -22,6 +22,7 @@ const state = {
   streaming: false,
   abort: null,
   attachments: [],
+  waitTimer: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -419,6 +420,18 @@ function messageNode(m, index) {
     node.appendChild(box);
   }
 
+  const carried = (m.meta && m.meta.attachments) || [];
+  if (carried.length) {
+    const box = el('div', 'msg-files');
+    carried.forEach(f => {
+      const chip = el('span', 'msg-file');
+      chip.textContent = '▤ ' + (f.filename || 'file') +
+        (f.characters ? '  ' + f.characters.toLocaleString() + ' chars' : '');
+      box.appendChild(chip);
+    });
+    node.appendChild(box);
+  }
+
   const body = el('div', 'msg-body' + (m.role === 'assistant' ? ' md' : ''));
   if (m.role === 'assistant') body.innerHTML = renderMarkdown(m.content || '');
   else body.textContent = m.content;
@@ -537,23 +550,30 @@ function scrollDown() {
 async function send(overrideText) {
   const input = $('input');
   let text = (overrideText != null ? overrideText : input.value).trim();
-  if (!text || state.streaming) return;
+  if (state.streaming) return;
+  if (!text && !state.attachments.length) return;
 
-  if (state.attachments.length) {
-    const files = state.attachments.map(a =>
-      '\n\n--- Attached file: ' + a.filename + ' (id: ' + a.id + ') ---\n' + a.excerpt +
-      (a.truncated ? '\n[excerpt only — use read_file for the rest]' : ''));
-    text += files.join('');
+  // Attachments travel as ids. Pasting the file's text into the message —
+  // which this used to do — meant a PDF turned the user's own bubble into
+  // forty pages of PDF. The server folds the text into the prompt at compose
+  // time, so the model still reads every word of it.
+  const files = state.attachments.map(a => ({
+    id: a.id, filename: a.filename, characters: a.characters || 0,
+  }));
+  if (files.length) {
     state.attachments = [];
     renderAttachments();
   }
+  if (!text && !files.length) return;
 
   input.value = '';
   input.style.height = 'auto';
 
-  state.messages.push({ role: 'user', content: text });
+  state.messages.push({
+    role: 'user', content: text, meta: files.length ? { attachments: files } : null,
+  });
   renderThread();
-  await stream({ message: text });
+  await stream({ message: text, attachments: files });
 }
 
 async function regenerate(index) {
@@ -625,6 +645,8 @@ async function stream(payload) {
       node.classList.add('error');
     }
   } finally {
+    clearInterval(state.waitTimer);
+    state.waitTimer = null;
     body.classList.remove('caret');
     state.streaming = false;
     state.abort = null;
@@ -662,14 +684,17 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       updatePromiseChip();
       break;
 
+    // The mode broke a promise it made. A rewrite may follow — and if one
+    // does, `constraint_retry` clears the draft. Clearing here as well used to
+    // wipe the answer on the *last* attempt, where no rewrite follows and the
+    // only thing left to render was the failure note. That is the blank bubble.
     case 'mode_breach':
       assistant.breach = d;
-      assistant.content = '';
-      body.innerHTML = '';
       toast(d.mode + ' mode broke its promise — rewriting');
       break;
 
     case 'token':
+      if (state.waitTimer) { clearInterval(state.waitTimer); state.waitTimer = null; }
       assistant.content += d.text;
       body.innerHTML = renderMarkdown(assistant.content);
       body.classList.add('caret');
@@ -774,9 +799,42 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       assistant.meta = Object.assign({}, assistant.meta, d);
       break;
 
-    case 'error':
+    // Rate limited, not broken. The agent is waiting it out, so show the wait
+    // counting down in place of the answer rather than leaving a dead pause.
+    case 'rate_limited': {
+      const until = Date.now() + d.seconds * 1000;
+      clearInterval(state.waitTimer);
+      const tick = () => {
+        const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+        body.innerHTML = '<p class="waiting">Rate limit reached — retrying in ' +
+          left + 's <span class="dim">(attempt ' + d.attempt + ' of ' +
+          (d.of + 1) +
+          (d.dropped_turns ? ', with ' + d.dropped_turns + ' older turn' +
+            (d.dropped_turns > 1 ? 's' : '') + ' dropped to fit' : '') +
+          ')</span></p>';
+        if (left <= 0) clearInterval(state.waitTimer);
+      };
+      tick();
+      state.waitTimer = setInterval(tick, 500);
+      toast('Rate limited — waiting ' + d.seconds + 's');
+      break;
+    }
+
+    case 'empty_answer':
       assistant.error = true;
-      assistant.content += '\n\n**Error:** ' + d.message;
+      break;
+
+    case 'error':
+      clearInterval(state.waitTimer);
+      assistant.error = true;
+      assistant.content += (assistant.content ? '\n\n' : '') +
+                           '**Error:** ' + d.message;
+      // Render it now. Waiting for the final re-render left the bubble blank
+      // for the whole of a failed turn.
+      body.innerHTML = renderMarkdown(assistant.content);
+      body.classList.remove('caret');
+      if (node) node.classList.add('error');
+      scrollDown();
       break;
   }
 }
