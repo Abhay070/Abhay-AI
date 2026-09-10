@@ -119,8 +119,12 @@ def main() -> int:
     chat, other = [], []
     for m in models:
         lowered = m.lower()
+        # Orpheus is text-to-speech and Groq lists it beside chat models with
+        # nothing in the name to say so. Without it here, the ranking below
+        # cheerfully recommended a speech model as a chat backend.
         if any(w in lowered for w in ("whisper", "tts", "embed", "guard",
-                                      "moderation", "vision-preview")):
+                                      "moderation", "vision-preview",
+                                      "orpheus", "speech", "audio", "rerank")):
             other.append(m)
         else:
             chat.append(m)
@@ -137,10 +141,26 @@ def main() -> int:
 
     if chat:
         # Prefer a large instruct-style model as the suggestion.
+        # Rank by parameter count where the name states one, then by
+        # instruction-tuned markers. Falling back to name LENGTH — as this
+        # once did — is meaningless and picked a speech model.
+        def size(name: str) -> int:
+            import re
+            match = re.search(r"(\d+)\s*b\b", name.lower())
+            return int(match.group(1)) if match else 0
+
+        def general(name: str) -> bool:
+            """Penalise models built for one language or one narrow task."""
+            lowered = name.lower()
+            return not any(t in lowered for t in
+                           ("arabic", "saudi", "allam", "coder", "math",
+                            "mini", "small"))
+
         pick = max(chat, key=lambda m: (
-            any(t in m.lower() for t in ("70b", "72b", "large")),
-            any(t in m.lower() for t in ("instruct", "versatile", "chat")),
-            len(m)))
+            general(m),
+            size(m),
+            any(t in m.lower() for t in ("instruct", "versatile", "chat", "oss")),
+        ))
         print(f"\n{GREEN}To use one, put this in your .env:{OFF}")
         print(f"  {model_var}={pick}")
         print(f"\n{DIM}Then restart:  python server.py{OFF}")
