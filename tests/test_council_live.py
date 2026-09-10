@@ -49,7 +49,8 @@ from praxis.providers import OpenAICompatibleProvider           # noqa: E402
 from praxis.store import Store                                  # noqa: E402
 import praxis.agent as agent_mod                                # noqa: E402
 
-PORTS = {"accurate": 9101, "hedging": 9102, "wrong": 9103, "broken": 9104}
+PORTS = {"accurate": 9101, "hedging": 9102, "wrong": 9103, "broken": 9104,
+         "staller": 9105}
 DELAY = 0.8            # seconds each server waits before its first token
 _servers: list[subprocess.Popen] = []
 
@@ -194,6 +195,89 @@ def test_every_member_failing_degrades_honestly():
     cands, verdict = asyncio.run(go())
     assert not any(c.usable for c in cands)
     assert "every member failed" in verdict.reason, verdict.reason
+
+
+# --- no consensus ----------------------------------------------------------
+
+def test_a_field_of_weak_answers_gets_no_consensus_not_a_winner():
+    """Three weak answers do not become one good answer by being compared.
+
+    The hedging persona answers "I'm not sure about that one" to anything it
+    has no script for. A council of two of those has no winner in it, and
+    crowning one launders three poor answers into one confident-looking
+    result — worse than any of them was alone."""
+    async def go():
+        unanswerable = [{"role": "user",
+                         "content": "What will our Q3 revenue be?"}]
+        cands = await council.gather([member("hedging"), member("staller")],
+                                     unanswerable, timeout=30)
+        with_judge = await council.judge(member("accurate"),
+                                         unanswerable[0]["content"], cands)
+        heuristic = await council.judge(None, unanswerable[0]["content"], cands)
+        return with_judge, heuristic
+
+    with_judge, heuristic = asyncio.run(go())
+    for verdict in (with_judge, heuristic):
+        assert verdict.no_consensus, (verdict.method, verdict.reason)
+        assert verdict.method == "no-consensus", verdict.method
+        # The best of the bad lot is still returned. Withholding it would be
+        # the other failure this product refuses to make.
+        assert verdict.winner.usable and verdict.winner.text.strip()
+
+
+def test_a_good_answer_still_wins_outright():
+    """The other direction, which matters more: no-consensus must not fire on
+    a field that contains a genuinely good answer, or the label means nothing."""
+    async def go():
+        cands = await council.gather(
+            [member("accurate"), member("hedging"), member("wrong")],
+            QUESTION, timeout=30)
+        return await council.judge(member("accurate"),
+                                   QUESTION[0]["content"], cands)
+
+    verdict = asyncio.run(go())
+    assert not verdict.no_consensus, verdict.reason
+    assert "Dallas" in verdict.winner.text, verdict.winner.text[:120]
+
+
+def test_the_no_consensus_answer_says_so_and_still_moves_the_user_on():
+    """End to end through the agent: the stored answer must carry the label,
+    keep the best available answer, and tell the user what to do with it."""
+    roster = {p: p for p in PORTS}
+    agent_mod.council_mod.from_spec = lambda spec: member(roster[spec.split(":")[0]])
+
+    path = tempfile.mktemp(suffix=".db")
+    store = Store(path)
+    settings = Settings(council_members="hedging,staller",
+                        council_judge="accurate",
+                        enable_constraint_check=False,
+                        enable_mode_contracts=False,
+                        enable_momentum=False)
+    agent = Agent(store, settings)
+
+    async def ask():
+        cid = store.create_conversation("t")
+        store.add_message(cid, "user", "What will our Q3 revenue be?")
+        seen = [e async for e in agent.run(member("accurate"), cid,
+                                           store.get_messages(cid), "standard",
+                                           strategy="council")]
+        return cid, seen
+
+    try:
+        cid, seen = asyncio.run(ask())
+        verdict = next(e for e in seen if e.type == "council_verdict")
+        assert verdict.data["no_consensus"] is True, verdict.data
+
+        answer = store.get_messages(cid)[-1]["content"]
+        assert "NO CONSENSUS" in answer, answer[:160]
+        assert "verify it before you rely on it" in answer, answer[:300]
+        # The actual answer is still there, below the label. Which of the weak
+        # members won is not the point and must not be asserted — the point is
+        # that something usable survives the label.
+        body = answer.split("---", 1)[-1].strip()
+        assert len(body) > 20, f"the label replaced the answer: {answer[:300]}"
+    finally:
+        os.remove(path)
 
 
 # --- race ------------------------------------------------------------------

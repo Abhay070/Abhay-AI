@@ -767,3 +767,8 @@ kbd {
   font-size: 9.5px; padding: 1px 5px; border-bottom-width: 1px;
   vertical-align: baseline;
 }
+
+/* A council that could not crown anyone. Marked, not hidden — the answer is
+   still shown, because withholding it would be the other failure. */
+.council-verdict.none { color: var(--warn); border-top-color: var(--warn); }
+.council-verdict.none b { color: var(--warn); }

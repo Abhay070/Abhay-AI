@@ -487,10 +487,13 @@ function councilNode(c) {
   box.appendChild(body);
 
   if (c.verdict) {
-    const v = el('div', 'council-verdict');
-    v.innerHTML = 'Winner <b>' + escapeHtml(c.verdict.winner) + '</b> — ' +
-      escapeHtml(c.verdict.reason) +
-      '<span class="how">' + escapeHtml(c.verdict.method) + '</span>';
+    const v = el('div', 'council-verdict' + (c.verdict.noConsensus ? ' none' : ''));
+    v.innerHTML = c.verdict.noConsensus
+      ? '<b>No consensus</b> — ' + escapeHtml(c.verdict.reason) +
+        '<span class="how">best of a weak field</span>'
+      : 'Winner <b>' + escapeHtml(c.verdict.winner) + '</b> — ' +
+        escapeHtml(c.verdict.reason) +
+        '<span class="how">' + escapeHtml(c.verdict.method) + '</span>';
     box.appendChild(v);
   }
   for (const note of (c.dropped || [])) {
@@ -763,6 +766,7 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       if (!assistant.council) break;
       assistant.council.verdict = {
         winner: d.winner, reason: d.reason, method: d.method,
+        noConsensus: !!d.no_consensus,
       };
       for (const e of assistant.council.entries) e.winner = (e.label === d.label);
       renderCouncil(assistant, node);

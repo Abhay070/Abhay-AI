@@ -406,11 +406,42 @@ def test_every_mode_is_distinct_and_reaches_the_prompt():
 
 
 def test_core_identity_carries_the_hard_rules():
-    text = build_system_prompt()
-    for needle in ("quietly validates a false claim",   # premise checking
-                   "tokens, not characters",             # constraint honesty
-                   "buffer overflow"):                   # no over-refusal
-        assert needle in text, f"missing: {needle}"
+    """The rules that must survive any future edit of the identity.
+
+    Each line here is a behaviour someone was burned by, not a phrase someone
+    liked. Pinning the wording would make the prompt unrewritable; pinning the
+    substance makes a deletion loud."""
+    text = build_system_prompt().lower()
+    required = {
+        "premise checking":     "correct it in your first",
+        "constraint honesty":   "tokens, not characters",
+        "no over-refusal":      "buffer overflow",
+        "no paralysis":         "i don't know yet",
+        "decisiveness":         "decisive",
+        "no false confidence":  "false confidence",
+        "honesty is infrastructure, not personality":
+                                "honesty is the floor",
+    }
+    missing = [f"{why} ({needle!r})" for why, needle in required.items()
+               if needle not in text]
+    assert not missing, "the identity no longer states: " + "; ".join(missing)
+
+
+def test_the_identity_names_all_three_failure_modes():
+    """Hallucination is the one everybody guards against. The product's stated
+    position is that refusing to help is exactly as bad."""
+    text = build_system_prompt().lower()
+    for failure in ("hallucination", "paralysis", "false confidence"):
+        assert failure in text, failure
+
+
+def test_the_identity_stays_affordable():
+    """It is sent on every single request, so its size is a running cost, not a
+    one-off. 1,400 tokens leaves room to hold a conversation inside a free
+    tier's per-minute allowance; much more does not."""
+    from praxis.identity import CORE_IDENTITY
+    tokens = len(CORE_IDENTITY) // 4
+    assert tokens < 1400, f"the core identity is ~{tokens} tokens"
 
 
 # --- agent end to end ------------------------------------------------------

@@ -35,6 +35,7 @@ from . import tools as toolkit
 from .config import Settings
 from . import council as council_mod
 from . import contracts as contracts_mod
+from . import momentum as momentum_mod
 from .constraints import correction_prompt, detect as detect_constraints
 from .constraints import verify as verify_constraints
 from .identity import build_system_prompt
@@ -280,7 +281,12 @@ class Agent:
                     "the full text of any attachment above.]")
             others = spent - len(kept[0]["content"])
             room = max(budget - others - len(note), MIN_QUESTION_CHARS)
-            kept[0]["content"] = kept[0]["content"][:room] + note
+            # Only if it is genuinely too long. The block can exceed the budget
+            # because the *system prompt* filled it, in which case a
+            # thirty-character question is not what overspent and telling the
+            # model it was "trimmed" is simply false.
+            if len(kept[0]["content"]) > room:
+                kept[0]["content"] = kept[0]["content"][:room] + note
             spent = sum(len(m["content"]) for m in kept)
 
         budget -= spent
@@ -490,6 +496,7 @@ class Agent:
             "label": verdict.winner.label,
             "reason": verdict.reason,
             "method": verdict.method,
+            "no_consensus": verdict.no_consensus,
             "judge_elapsed": verdict.judge_elapsed,
             "considered": [
                 {"label": c.label, "provider": c.provider, "ok": c.usable,
@@ -504,6 +511,22 @@ class Agent:
             return
 
         text = verdict.winner.text
+        if verdict.no_consensus:
+            # Three weak answers are not one good answer. Say so on the answer
+            # itself, not only in a panel the user may have collapsed — but
+            # still show the best of them, because withholding it would be the
+            # other failure this product refuses to make.
+            others = sum(1 for c in verdict.candidates
+                         if c.usable and c.label != verdict.winner.label)
+            text = (f"**NO CONSENSUS — insufficient confidence.** "
+                    f"{verdict.reason}\n\n"
+                    f"Below is the strongest of the answers anyway. Treat it as "
+                    f"a starting point, not a finding, and verify it before you "
+                    f"rely on it"
+                    + (f" — the other {others} answered differently."
+                       if others else ".")
+                    + "\n\n---\n\n" + text)
+
         # Emit in chunks so the interface behaves the same as a live stream.
         for i in range(0, len(text), 24):
             yield Event("token", {"text": text[i:i + 24]})
@@ -603,7 +626,8 @@ class Agent:
                 yield Event("constraint_retry", {
                     "attempt": attempts,
                     "violations": [v.detail for v in violations]
-                                  + [f"{mode_key} mode: {b.detail}" for b in breaches],
+                                  + [f"{mode_key} mode: {b.detail}" for b in breaches]
+                                  + [st.detail for st in stalls],
                 })
 
             out: dict = {}
@@ -645,8 +669,10 @@ class Agent:
             violations = verify_constraints(final, constraints) if constraints else []
             breaches = (contracts_mod.check(mode_key, final)
                         if self.settings.enable_mode_contracts else [])
+            stalls = (momentum_mod.check(final)
+                      if self.settings.enable_momentum else [])
 
-            if not violations and not breaches:
+            if not violations and not breaches and not stalls:
                 if attempt:
                     yield Event("constraint_ok", {"attempts": attempts})
                 break
@@ -657,12 +683,19 @@ class Agent:
                     "broke": [b.detail for b in breaches],
                     "attempt": attempts,
                 })
+            if stalls:
+                yield Event("stalled", {
+                    "quote": stalls[0].quote,
+                    "detail": stalls[0].detail,
+                    "attempt": attempts,
+                })
 
             if attempt >= self.settings.max_constraint_retries:
                 # Out of retries. Say so rather than passing off a broken answer
                 # as compliant — an unflagged violation is the worse failure.
                 problems = ([v.detail[:120] for v in violations]
-                            + [f"{mode_key} mode: {b.detail}" for b in breaches])
+                            + [f"{mode_key} mode: {b.detail}" for b in breaches]
+                            + [st.detail for st in stalls])
                 note = ("\n\n---\n_Check failed after "
                         f"{attempts} attempts: " + "; ".join(problems)
                         + ". The answer above does not meet what you asked for._")
@@ -679,6 +712,8 @@ class Agent:
                 repair.append(correction_prompt(violations))
             if breaches:
                 repair.append(contracts_mod.repair_prompt(mode_key, breaches))
+            if stalls:
+                repair.append(momentum_mod.repair_prompt(stalls))
             working = list(messages) + [
                 {"role": "assistant", "content": final},
                 {"role": "user", "content": "\n\n".join(repair)},

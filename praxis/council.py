@@ -57,9 +57,13 @@ class Candidate:
 class Verdict:
     winner: Candidate
     reason: str
-    method: str                 # "judge" | "heuristic" | "only-candidate"
+    method: str                 # judge | heuristic | only-candidate | no-consensus
     candidates: list[Candidate] = field(default_factory=list)
     judge_elapsed: float = 0.0
+    # True when the field was too weak to crown anyone. The winner is still
+    # the best of a bad lot and is still shown — refusing to answer would be
+    # its own failure — but it is labelled rather than presented as a verdict.
+    no_consensus: bool = False
 
 
 # --- gathering -------------------------------------------------------------
@@ -150,13 +154,19 @@ Judge on, in order of weight:
 Ignore length, ignore confidence of tone, and ignore writing polish except
 where it affects clarity. The longest answer is not the best answer.
 
+If every answer is weak — all evasive, all unsupported, all plainly wrong, or
+all disagreeing with no way to tell which is right — do not crown the least
+bad one. Answer NONE. Picking a winner from a bad field is how three poor
+answers get laundered into one confident-looking answer, which is worse than
+any of them was alone.
+
 Reply in exactly this format and nothing else:
 
-WINNER: <letter>
+WINNER: <letter, or NONE>
 REASON: <one sentence, naming the specific thing that decided it>
 """
 
-_WINNER_RE = re.compile(r"WINNER:\s*([A-Z])", re.IGNORECASE)
+_WINNER_RE = re.compile(r"WINNER:\s*(NONE|[A-Z])\b", re.IGNORECASE)
 _REASON_RE = re.compile(r"REASON:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
 
@@ -202,10 +212,22 @@ async def judge(judge_provider: Provider | None, question: str,
     if not usable:
         return Verdict(candidates[0], "every member failed", "heuristic", candidates)
     if len(usable) == 1:
+        # One survivor is not a consensus, and a weak survivor is not an answer.
+        # "Every candidate was weak" is still true when there is only one of
+        # them — this path used to skip the check entirely and hand a hedge
+        # back wearing a verdict.
+        weak, why = looks_weak(usable[0].text)
+        if weak:
+            return Verdict(usable[0],
+                           f"only one member answered, and {why}",
+                           "no-consensus", candidates, no_consensus=True)
         return Verdict(usable[0], "the only member that answered",
                        "only-candidate", candidates)
     if judge_provider is None:
         winner, reason = _heuristic(candidates)
+        if all(looks_weak(c.text)[0] for c in usable):
+            return Verdict(winner, f"{reason} — but every candidate was weak",
+                           "no-consensus", candidates, no_consensus=True)
         return Verdict(winner, reason, "heuristic", candidates)
 
     started = time.time()
@@ -230,20 +252,33 @@ async def judge(judge_provider: Provider | None, question: str,
                        "heuristic", candidates, round(time.time() - started, 2))
 
     elapsed = round(time.time() - started, 2)
-    match = _WINNER_RE.search(raw)
-    picked = None
-    if match:
-        letter = match.group(1).upper()
-        picked = next((c for c in usable if c.label == letter), None)
-
-    if picked is None:
-        winner, reason = _heuristic(candidates)
-        return Verdict(winner, f"{reason} — judge gave no clear verdict",
-                       "heuristic", candidates, elapsed)
-
     reason_match = _REASON_RE.search(raw)
     reason = (reason_match.group(1).strip().split("\n")[0][:240]
               if reason_match else "selected by judge")
+
+    match = _WINNER_RE.search(raw)
+    letter = match.group(1).upper() if match else ""
+
+    if letter == "NONE":
+        # The judge looked at the field and declined to crown anyone. Show the
+        # least bad answer anyway — silence would be its own failure — but say
+        # plainly that nothing here earned a verdict.
+        best, _ = _heuristic(candidates)
+        return Verdict(best, reason or "no candidate was good enough",
+                       "no-consensus", candidates, elapsed, no_consensus=True)
+
+    picked = next((c for c in usable if c.label == letter), None) if letter else None
+    if picked is None:
+        winner, why = _heuristic(candidates)
+        return Verdict(winner, f"{why} — judge gave no clear verdict",
+                       "heuristic", candidates, elapsed)
+
+    # A judge can also pick a winner out of a field where nothing was any good.
+    # Three weak answers do not become one strong answer by being compared.
+    if all(looks_weak(c.text)[0] for c in usable):
+        return Verdict(picked, f"{reason} — but every candidate was weak",
+                       "no-consensus", candidates, elapsed, no_consensus=True)
+
     return Verdict(picked, reason, "judge", candidates, elapsed)
 
 

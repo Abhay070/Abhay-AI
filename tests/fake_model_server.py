@@ -67,7 +67,18 @@ DEFAULT = {
     "accurate": "Here is a careful, specific answer to that.",
     "hedging":  "I'm not sure about that one.",
     "wrong":    "The answer is definitely 42, without question.",
+    # The failure the product is named against: honest, useless, and
+    # comfortable about it. It stops the moment it meets uncertainty.
+    "staller":  "I cannot confidently determine this without more information.",
 }
+
+# What a staller says once it has been told to give the user a way forward.
+# Repaired on the second attempt, so the repair loop can be observed working
+# rather than merely firing.
+STALLER_REPAIRED = (
+    "I'd go with the first option. I'm not certain about the throughput "
+    "numbers, so measure them before you commit — start by replaying a day of "
+    "real traffic against both.")
 
 
 def answer_for(question: str, persona: str) -> str:
@@ -157,6 +168,15 @@ def build(persona: str, delay: float, broken: bool,
                 yield b"data: [DONE]\n\n"
             return StreamingResponse(think(), media_type="text/event-stream")
 
+        # A staller answers uselessly until it is told why that is useless,
+        # then answers properly — which is what a repair loop is for.
+        if persona == "staller":
+            told_off = any("way forward" in str(m.get("content", ""))
+                           for m in req.messages)
+            body = STALLER_REPAIRED if told_off else DEFAULT["staller"]
+            return StreamingResponse(_send(body, delay),
+                                     media_type="text/event-stream")
+
         # When Praxis asks this server to act as a judge, behave like one:
         # read the ballot and pick the answer that is not hedging or wrong.
         if "You are judging candidate answers" in system:
@@ -164,20 +184,22 @@ def build(persona: str, delay: float, broken: bool,
         else:
             body = answer_for(question, persona)
 
-        async def stream():
-            await asyncio.sleep(delay)          # the whole point: real latency
-            for word in body.split(" "):
-                chunk = {"choices": [{"delta": {"content": word + " "}}]}
-                yield f"data: {json.dumps(chunk)}\n\n".encode()
-                await asyncio.sleep(0.004)
-            yield ('data: ' + json.dumps(
-                {"choices": [{"delta": {}, "finish_reason": "stop"}]})
-                + "\n\n").encode()
-            yield b"data: [DONE]\n\n"
-
-        return StreamingResponse(stream(), media_type="text/event-stream")
+        return StreamingResponse(_send(body, delay),
+                                 media_type="text/event-stream")
 
     return app
+
+
+async def _send(body: str, delay: float):
+    """Stream one answer word by word, after a real wait."""
+    await asyncio.sleep(delay)              # the whole point: real latency
+    for word in body.split(" "):
+        chunk = {"choices": [{"delta": {"content": word + " "}}]}
+        yield f"data: {json.dumps(chunk)}\n\n".encode()
+        await asyncio.sleep(0.004)
+    yield ("data: " + json.dumps(
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]}) + "\n\n").encode()
+    yield b"data: [DONE]\n\n"
 
 
 def _judge(ballot: str) -> str:
@@ -208,7 +230,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=9001)
     parser.add_argument("--persona", default="accurate",
-                        choices=["accurate", "hedging", "wrong", "thinker"])
+                        choices=["accurate", "hedging", "wrong", "thinker",
+                                 "staller"])
     parser.add_argument("--delay", type=float, default=1.0,
                         help="seconds before the first token")
     parser.add_argument("--broken", action="store_true",

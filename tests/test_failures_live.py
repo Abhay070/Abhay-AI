@@ -53,13 +53,14 @@ from praxis.store import Store                                   # noqa: E402
 # thinker: reasons forever, never answers.  limited: 429s twice, then works.
 # strict:  refuses reasoning_effort.        walled: 429s more than we retry.
 PORTS = {"thinker": 9111, "limited": 9112, "strict": 9113,
-         "walled": 9114, "plain": 9115}
+         "walled": 9114, "plain": 9115, "staller": 9116}
 ARGS = {
     "thinker": ["--persona", "thinker"],
     "limited": ["--persona", "accurate", "--rate-limit", "2"],
     "strict":  ["--persona", "accurate", "--strict"],
     "walled":  ["--persona", "accurate", "--rate-limit", "99"],
     "plain":   ["--persona", "accurate"],
+    "staller": ["--persona", "staller"],
 }
 _servers: list[subprocess.Popen] = []
 
@@ -452,7 +453,86 @@ def test_a_mode_that_never_satisfies_its_contract_still_returns_an_answer():
         os.remove(path)
 
 
-# --- 6. modes must actually differ -----------------------------------------
+# --- 6. don't stall --------------------------------------------------------
+
+def test_an_answer_that_stops_at_uncertainty_is_sent_back():
+    """The failure this product is named against: honest, useless, and
+    comfortable about it. "I cannot confidently determine this" is a complete
+    sentence and a complete failure."""
+    path = tempfile.mktemp(suffix=".db")
+    store = Store(path)
+    agent = Agent(store, Settings(enable_tools=False, enable_memory=False,
+                                  enable_mode_contracts=False,
+                                  enable_momentum=True,
+                                  max_constraint_retries=1))
+
+    async def go():
+        cid = store.create_conversation("t")
+        store.add_message(cid, "user", "Should we use Postgres or MySQL?")
+        seen = [e async for e in agent.run(member("staller"), cid,
+                                           store.get_messages(cid), "standard")]
+        return cid, seen
+
+    try:
+        cid, seen = asyncio.run(go())
+        kinds = [e.type for e in seen]
+        assert "stalled" in kinds, kinds
+
+        stalled = next(e for e in seen if e.type == "stalled")
+        # It quotes the sentence it stopped on, not a general complaint.
+        assert "cannot confidently determine" in stalled.data["quote"], stalled.data
+
+        answer = store.get_messages(cid)[-1]["content"]
+        assert "I'd go with" in answer, answer[:160]
+        assert "measure them before you commit" in answer, answer[:160]
+        # And the honesty survived the repair — this is not a check that turns
+        # an uncertain answer into a confident one.
+        assert "not certain" in answer.lower(), answer[:160]
+    finally:
+        os.remove(path)
+
+
+def test_a_safety_refusal_is_never_pushed_on():
+    """A repair loop that argues with a refusal is a loop that eventually gets
+    one overturned. Refusals are exempt, in the checker itself, not by luck."""
+    from praxis import momentum
+    refusals = [
+        "I can't help with building a credential-stuffing tool. If you are "
+        "testing your own login flow I can help you write a rate-limit test.",
+        "I have to decline that one.",
+        "I won't write malware. That's not something I can help with.",
+    ]
+    for text in refusals:
+        assert momentum.check(text) == [], text[:60]
+
+
+def test_an_honest_answer_that_keeps_moving_is_left_alone():
+    """The target behaviour must never be nagged. A false accusation here costs
+    a whole regeneration and teaches the model that hedging is punished, which
+    is the opposite of the intent."""
+    from praxis import momentum
+    good = [
+        "I'd choose Postgres. I'm not certain about your JSON query volume — "
+        "load a day of real traffic into both and compare.",
+        "I don't know your p99 offhand. Run pg_stat_statements and check the "
+        "top five queries; that answers it in ten minutes.",
+        "It depends on whether writes or reads dominate. If writes, Postgres.",
+        "Canberra.",
+        "I'm not sure that library is still maintained — my best guess is it "
+        "isn't, so check the last commit date before building on it.",
+    ]
+    nagged = [t[:50] for t in good if momentum.check(t)]
+    assert not nagged, f"falsely flagged as stalling: {nagged}"
+
+
+def test_the_empty_answer_check_owns_blankness_not_this_one():
+    """Two checks reporting one fault helps nobody."""
+    from praxis import momentum
+    assert momentum.check("") == []
+    assert momentum.check("   \n  ") == []
+
+
+# --- 7. modes must actually differ -----------------------------------------
 
 def _system_for(store, mode: str, **settings) -> str:
     agent = Agent(store, Settings(enable_memory=False, **settings))

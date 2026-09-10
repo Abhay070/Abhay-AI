@@ -100,6 +100,10 @@ class Settings:
     # Hold a mode to the promises its own prompt makes — Direct's word limit,
     # Brief's five headings, Reality Check's verdict. See praxis/contracts.py.
     enable_mode_contracts: bool = env_bool("ENABLE_MODE_CONTRACTS", True)
+    # Catch an answer that stops at "I cannot determine this" and leaves the
+    # user where they started, and make it give a way forward. Refusing to
+    # help is a failure mode here, not a safe default. See praxis/momentum.py.
+    enable_momentum: bool = env_bool("ENABLE_MOMENTUM", True)
 
     # --- the council -------------------------------------------------------
     # Several models answer the same question; the best answer wins. See
