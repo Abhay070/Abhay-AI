@@ -370,7 +370,14 @@ class OpenAICompatibleProvider(Provider):
         # low | medium | high, or empty to leave the model's default alone.
         # Sent only to models that understand it, and dropped automatically if
         # an endpoint refuses it.
-        self.reasoning_effort = os.getenv("REASONING_EFFORT", "low").strip().lower()
+        #
+        # Default medium, not low. Low was tempting because thinking tokens are
+        # what blows a free tier's per-minute allowance — but a rate limit is
+        # now waited out and shrunk rather than failed, whereas a model starved
+        # of thinking is just worse at the questions that need it most, and no
+        # amount of retrying fixes that. Set low if you would rather wait less
+        # than think more.
+        self.reasoning_effort = os.getenv("REASONING_EFFORT", "medium").strip().lower()
         if self.reasoning_effort in ("", "off", "none", "default"):
             self.reasoning_effort = ""
         if label:

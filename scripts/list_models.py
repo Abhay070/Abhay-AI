@@ -170,12 +170,12 @@ def main() -> int:
         # answer field never arrives at all and the reply comes back blank.
         from praxis.providers import REASONING_MODELS
         if REASONING_MODELS.search(pick):
-            print(f"  REASONING_EFFORT=low")
+            print(f"  REASONING_EFFORT=medium")
             print(f"\n{YELLOW}{pick} thinks before it answers.{OFF} Those thinking "
-                  f"tokens\ncount against a free tier's per-minute allowance and "
-                  f"can eat the whole\noutput budget. REASONING_EFFORT=low keeps "
-                  f"it brief. Raise it to\nmedium or high once you are on a paid "
-                  f"tier.")
+                  f"tokens count\nagainst a free tier's per-minute allowance. "
+                  f"Praxis waits out a rate limit\nrather than failing, so medium "
+                  f"is the right default; drop to low if you\nwould rather wait "
+                  f"less than think more.")
         print(f"\n{DIM}Then restart:  python server.py{OFF}")
     return 0
 

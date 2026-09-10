@@ -172,6 +172,52 @@ with sync_playwright() as p:
     pg.keyboard.press("Escape"); pg.wait_for_timeout(250)
 
     pg.screenshot(path=f"{S}/audit-final.png")
+    # ---------- ATTACHMENTS ----------
+    # The failure this pins: uploading a PDF used to paste its text into the
+    # user's own message, so the transcript became the document. What the user
+    # typed must stay what the user typed, and the file must still reach the
+    # model.
+    import tempfile as _tempfile, os as _os
+    marker = "ZZQUANTUMHERRING"
+    doc = _os.path.join(_tempfile.mkdtemp(), "report.txt")
+    with open(doc, "w", encoding="utf-8") as fh:
+        fh.write(f"{marker} project brief.\n" + ("Water conservation. " * 400))
+
+    pg.click("#newChat"); pg.wait_for_timeout(600)
+    pg.set_input_files("#fileInput", doc); pg.wait_for_timeout(1500)
+    check("attach: chip appears in the composer",
+          pg.locator("#attachments .attachment").count() == 1,
+          f"{pg.locator('#attachments .attachment').count()} chips")
+
+    pg.fill("#input", "what is this and what does it lack")
+    pg.click("#sendBtn"); pg.wait_for_timeout(9000)
+
+    typed = pg.locator(".msg.user .msg-body").last.inner_text()
+    check("attach: user's message is only what they typed",
+          typed.strip() == "what is this and what does it lack", typed[:70])
+    check("attach: the file's text is NOT pasted into the transcript",
+          marker not in typed and "Water conservation." not in typed)
+    check("attach: the turn shows a file chip",
+          pg.locator(".msg.user .msg-file").count() == 1,
+          pg.locator(".msg.user .msg-file").first.inner_text()
+          if pg.locator(".msg.user .msg-file").count() else "no chip")
+
+    # And the model really did receive it: the prompt inspector shows what was
+    # sent. A chip that hides the file from the model would be worse than the
+    # bug it replaced.
+    import urllib.request as _u, json as _j
+    with _u.urlopen("http://127.0.0.1:8000/api/conversations") as r:
+        cid = _j.load(r)[0]["id"]
+    with _u.urlopen(f"http://127.0.0.1:8000/api/conversations/{cid}") as r:
+        convo = _j.load(r)
+    user_turn = [m for m in convo["messages"] if m["role"] == "user"][-1]
+    check("attach: stored turn keeps the file by reference, not by value",
+          marker not in user_turn["content"]
+          and bool((user_turn.get("meta") or {}).get("attachments")),
+          str(user_turn.get("meta"))[:70])
+
+    pg.screenshot(path=f"{S}/attachment-flow.png", full_page=False)
+
     b.close()
 
 # The suite drives the real app against the real database, so it must clean
@@ -181,7 +227,7 @@ import urllib.request, json as _json
 try:
     with urllib.request.urlopen("http://127.0.0.1:8000/api/conversations") as r:
         for c in _json.load(r):
-            if c["title"].startswith(("What is 1920", "Test ", "/")):
+            if c["title"].startswith(("What is 1920", "Test ", "/", "What is this")):
                 req = urllib.request.Request(
                     f"http://127.0.0.1:8000/api/conversations/{c['id']}",
                     method="DELETE")

@@ -22,8 +22,9 @@ missed one:
   2. Only checks that cannot reasonably misfire on a good answer. "Did it end
      with a question?" is checkable. "Was it insightful?" is not.
 
-Modes with nothing safely checkable have no contract, and that is fine. Six of
-ten carry one.
+Modes with nothing safely checkable have no contract, and that is fine.
+Standard deliberately has none — it promises nothing beyond the core
+identity, so there is nothing to hold it to. The other nine carry one.
 """
 
 from __future__ import annotations
@@ -156,6 +157,51 @@ CONTRACTS: dict[str, list[Promise]] = {
             check=lambda t: "?" in t,
             repair=("Exam mode promises to test the user. Ask one question and "
                     "wait for the answer."),
+        ),
+    ],
+
+    "build": [
+        Promise(
+            label="ships something runnable, not advice about it",
+            check=lambda t: ("```" in t or re.search(
+                r"(^|\n)\s*(\$|>|#)?\s*(npm|npx|pip|pipx|python|node|go |cargo|"
+                r"docker|git|make|uv|bun|yarn|pnpm|curl|mkdir|cd )\b", t,
+                re.IGNORECASE) is not None),
+            repair=("Build mode promises artifacts, not advice: real code, real "
+                    "file layouts, and the exact commands to run. Add them. An "
+                    "answer with no code and no commands has not built "
+                    "anything."),
+        ),
+    ],
+
+    "teacher": [
+        Promise(
+            label="checks understanding with a real question",
+            check=lambda t: "?" in t,
+            repair=("Teacher mode promises to check understanding at natural "
+                    "breakpoints with a real question. Ask one."),
+        ),
+        Promise(
+            label="never assumes what the user already knows",
+            check=lambda t: re.search(
+                r"as you (probably|may|might|likely) know|as you'?re aware|"
+                r"obviously,|of course you know", t, re.IGNORECASE) is None,
+            repair=("Teacher mode forbids 'as you probably know'. If they knew, "
+                    "they would not be asking. Delete the phrase and explain "
+                    "the thing."),
+        ),
+    ],
+
+    "research": [
+        Promise(
+            label="ends with what is established, contested and unknown",
+            check=lambda t: re.search(
+                r"establish|contested|unknown|unverified|uncertain|disputed|"
+                r"in summary|synthesis|what we know", t, re.IGNORECASE)
+                is not None,
+            repair=("Research mode promises a closing synthesis: what is "
+                    "established, what is contested, what is unknown. Add it, "
+                    "and mark anything you could not verify as unverified."),
         ),
     ],
 

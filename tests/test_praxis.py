@@ -236,10 +236,18 @@ def test_socratic_mode_must_ask_not_tell():
     assert contracts.check("socratic", "The pointer is freed when the scope ends.")
 
 
-def test_modes_without_contracts_never_breach():
-    for mode in ("standard", "teacher", "build", "research", "exam"):
-        result = contracts.check(mode, "Any answer at all, of any shape.")
-        assert mode == "exam" or result == [], f"{mode} falsely breached: {result}"
+def test_standard_mode_never_breaches():
+    """Standard is the one mode with nothing to enforce — it promises nothing
+    beyond the core identity. Every other mode makes a claim in its own prompt,
+    and a claim nothing checks is a claim the product does not keep."""
+    assert contracts.check("standard", "Any answer at all, of any shape.") == []
+
+
+def test_an_answer_that_ignores_its_mode_breaches_every_mode_that_promises():
+    ignored = "Well, that depends on a great many things. " * 30
+    unchecked = [key for key in modes.MODES
+                 if key != "standard" and not contracts.check(key, ignored)]
+    assert not unchecked, f"these modes let a mode-ignoring answer through: {unchecked}"
 
 
 def test_contract_repair_prompt_names_the_broken_promise():

@@ -452,6 +452,110 @@ def test_a_mode_that_never_satisfies_its_contract_still_returns_an_answer():
         os.remove(path)
 
 
+# --- 6. modes must actually differ -----------------------------------------
+
+def _system_for(store, mode: str, **settings) -> str:
+    agent = Agent(store, Settings(enable_memory=False, **settings))
+    cid = store.create_conversation("t")
+    store.add_message(cid, "user", "Should I rewrite our billing service in Go?")
+    return agent.compose(store.get_messages(cid), mode)[0][0]["content"]
+
+
+def test_every_mode_sends_a_different_system_prompt():
+    """If two modes send the same prompt they cannot produce different answers,
+    and the mode picker is decoration."""
+    from praxis import modes as modes_mod
+    path = tempfile.mktemp(suffix=".db")
+    store = Store(path)
+    try:
+        prompts = {k: _system_for(store, k) for k in modes_mod.MODES}
+        clashes = [(a, b) for i, a in enumerate(prompts)
+                   for b in list(prompts)[i + 1:] if prompts[a] == prompts[b]]
+        assert not clashes, f"identical system prompts: {clashes}"
+        # And each carries its own overlay verbatim, not a paraphrase of it.
+        for key, mode in modes_mod.MODES.items():
+            if mode.prompt.strip():
+                assert mode.prompt.strip() in prompts[key], \
+                    f"{key}'s overlay never reached the prompt"
+    finally:
+        os.remove(path)
+
+
+def test_the_mode_overlay_survives_the_tightest_prompt_budget():
+    """Trimming for a free tier must never trim away the thing that makes the
+    mode a mode. History is negotiable; identity is not."""
+    from praxis import modes as modes_mod
+    path = tempfile.mktemp(suffix=".db")
+    store = Store(path)
+    try:
+        for key, mode in modes_mod.MODES.items():
+            if not mode.prompt.strip():
+                continue
+            system = _system_for(store, key, max_prompt_tokens=600)
+            assert mode.prompt.strip() in system, \
+                f"{key}'s overlay was trimmed away at a 600-token budget"
+    finally:
+        os.remove(path)
+
+
+def test_every_mode_that_makes_a_checkable_promise_has_a_contract():
+    """A promise nothing checks is a promise the product does not keep. Standard
+    is the deliberate exception: it promises nothing beyond the core identity."""
+    from praxis import contracts as contracts_mod
+    from praxis import modes as modes_mod
+    unchecked = [k for k in modes_mod.MODES
+                 if k != "standard" and not contracts_mod.describe(k)]
+    assert not unchecked, f"modes with no enforced promise: {unchecked}"
+
+
+def test_a_contract_never_fires_on_an_answer_that_honours_the_mode():
+    """The other half of the same coin: a false accusation costs a whole
+    regeneration and teaches the user the checker is noise."""
+    from praxis import contracts as contracts_mod
+    good = {
+        "direct": "Yes. Go's concurrency suits billing throughput, and your "
+                  "team already ships Go. Start with the ledger writer.",
+        "brief": ("**Situation** Billing runs on a five-year-old Ruby service.\n"
+                  "**Problem** It cannot keep up at month end.\n"
+                  "**Options** Rewrite in Go, shard the database, or buy.\n"
+                  "**Recommendation** Rewrite the ledger writer in Go first.\n"
+                  "**Next action** Spike the writer this week and measure."),
+        "reality": "TEST FIRST. The throughput claim is unproven, and a rewrite "
+                   "is the most expensive way to find out you were wrong.",
+        "socratic": "What part of the current service is actually the "
+                    "bottleneck — the language, or the database round trips?",
+        "exam": "Before we decide: what is your p99 latency at month end?",
+        "founder": "Rewrite the ledger writer only. This week, replay one day "
+                   "of production traffic against a Go prototype and measure.",
+        "build": ("Use Go 1.23 with pgx v5.\n\n```go\nfunc main() { "
+                  "ledger.Serve() }\n```\n\nRun it: `go run ./cmd/ledger`"),
+        "teacher": ("Start with what a ledger writer does: it appends, it never "
+                    "updates. Why do you think that matters for throughput?"),
+        "research": ("What is established: Go handles concurrent writes well. "
+                     "What is contested: whether the language is your "
+                     "bottleneck. What is unknown: your actual p99."),
+    }
+    wrong = []
+    for mode, answer in good.items():
+        breaches = contracts_mod.check(mode, answer)
+        if breaches:
+            wrong.append(f"{mode}: falsely accused of "
+                         f"{[b.detail for b in breaches]}")
+    assert not wrong, "\n  " + "\n  ".join(wrong)
+
+
+def test_a_contract_does_fire_when_the_mode_is_ignored():
+    """An answer that ignores the mode entirely must be caught by every mode
+    that promises something checkable."""
+    from praxis import contracts as contracts_mod
+    from praxis import modes as modes_mod
+    ignored = ("Well, that depends on a great many things, and reasonable "
+               "people differ. " * 30)
+    missed = [k for k in modes_mod.MODES
+              if contracts_mod.describe(k) and not contracts_mod.check(k, ignored)]
+    assert not missed, f"these contracts let a mode-ignoring answer through: {missed}"
+
+
 # --- runner ----------------------------------------------------------------
 
 def main() -> int:
