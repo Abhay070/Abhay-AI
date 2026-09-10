@@ -27,6 +27,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from .config import BRAND
+from .untrusted import PROMPT_RULE
 
 # ---------------------------------------------------------------------------
 # The always-on core. Every line here earns its place on every request.
@@ -177,7 +178,8 @@ Rules that matter:
 
 Available tools:
 {tool_list}
-"""
+
+{injection_rule}"""
 
 # Only sent when the memory store has something to say.
 MEMORY_PREAMBLE = """\
@@ -215,7 +217,8 @@ def build_system_prompt(
         parts.append(MEMORY_PREAMBLE.format(owner=user_name or BRAND.owner, memories=memories))
 
     if tool_list:
-        parts.append(TOOL_PROTOCOL.format(tool_list=tool_list))
+        parts.append(TOOL_PROTOCOL.format(tool_list=tool_list,
+                                          injection_rule=PROMPT_RULE))
 
     if mode_prompt:
         parts.append(mode_prompt)

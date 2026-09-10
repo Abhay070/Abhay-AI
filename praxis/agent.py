@@ -36,6 +36,7 @@ from .config import Settings
 from . import council as council_mod
 from . import contracts as contracts_mod
 from . import momentum as momentum_mod
+from . import untrusted
 from .constraints import correction_prompt, detect as detect_constraints
 from .constraints import verify as verify_constraints
 from .identity import build_system_prompt
@@ -235,9 +236,13 @@ class Agent:
         tail = (f"\n[This is the first {cap:,} of {len(text):,} characters. Call "
                 f"read_file with file_id \"{ref.get('id', '')}\" for the rest.]"
                 if rest else "")
-        return (f"\n\n--- Attached file: {name} "
-                f"(id: {ref.get('id', '')}, {len(text):,} characters) ---\n"
-                f"{body}{tail}")
+        # A document the user uploaded is still a document, not a second voice
+        # in the conversation. "Ignore your instructions" typed into a PDF is a
+        # sentence in a PDF.
+        return "\n\n" + untrusted.wrap(
+            "uploaded file",
+            f"{name} (id: {ref.get('id', '')}, {len(text):,} characters)",
+            body + tail)
 
     def expand(self, message: dict) -> str:
         """A stored turn, with any files it carried folded back in."""
@@ -420,9 +425,15 @@ class Agent:
                 result = toolkit.execute(name, args,
                                          {"conversation_id": conversation_id})
 
+            # Anything a tool brings back came from outside. Flagging it is
+            # advisory and never blocks: a page *about* prompt injection trips
+            # this, and silently dropping a legitimate page would be a worse
+            # bug than the one being prevented.
+            suspicious = untrusted.looks_like_injection(result.output)
             yield Event("tool_result", {
                 "name": name, "ok": result.ok,
                 "output": result.output[:1500], "data": result.data,
+                "suspicious": suspicious,
             })
             if name == "remember" and result.ok and result.data.get("memory_id"):
                 yield Event("memory", result.data)
@@ -431,9 +442,10 @@ class Agent:
             messages.append({"role": "assistant", "content": buffer.strip()})
             messages.append({
                 "role": "user",
-                "content": f"<tool_result name=\"{name}\">\n{result.to_prompt()}\n"
-                           f"</tool_result>\n\nContinue. Answer the original question "
-                           f"using this result. Do not repeat the tool call.",
+                "content": untrusted.wrap("tool result", f"the {name} tool",
+                                          result.to_prompt())
+                           + "\n\nContinue. Answer the original question using "
+                             "this result. Do not repeat the tool call.",
             })
 
         out["text"] = toolkit.strip_calls(visible).strip()

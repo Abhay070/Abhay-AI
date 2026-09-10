@@ -455,6 +455,12 @@ function toolNode(t) {
     '<span style="color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;' +
     'white-space:nowrap">' + escapeHtml(argText) + '</span>' + status;
   box.appendChild(head);
+  if (t.suspicious && t.suspicious.length) {
+    const warn = el('div', 'tool-run-warn');
+    warn.innerHTML = '⚠ This result tried to give instructions — Praxis read ' +
+      'it as data, not orders.';
+    box.appendChild(warn);
+  }
   if (t.output) {
     const body = el('div', 'tool-run-body', t.output);
     body.classList.add('hidden');
@@ -716,8 +722,12 @@ function handleEvent(evt, assistant, body, toolBox, node) {
       const t = assistant.tools.find(x => x.pending && x.name === d.name);
       if (t) {
         t.pending = false; t.ok = d.ok; t.output = d.output;
+        t.suspicious = d.suspicious || [];
         toolBox.innerHTML = '';
         assistant.tools.forEach(x => toolBox.appendChild(toolNode(x)));
+      }
+      if (d.suspicious && d.suspicious.length) {
+        toast('That ' + d.name + ' result tried to give instructions — treated as data');
       }
       scrollDown();
       break;

@@ -772,3 +772,10 @@ kbd {
    still shown, because withholding it would be the other failure. */
 .council-verdict.none { color: var(--warn); border-top-color: var(--warn); }
 .council-verdict.none b { color: var(--warn); }
+
+/* A tool result that tried to issue instructions. Shown, not hidden — the user
+   should know a page tried, and that Praxis did not comply. */
+.tool-run-warn {
+  font-size: 12px; color: var(--warn); padding: 6px 11px;
+  border-top: 1px solid var(--border); background: rgba(242, 184, 30, .08);
+}
