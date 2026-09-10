@@ -174,6 +174,21 @@ with sync_playwright() as p:
     pg.screenshot(path=f"{S}/audit-final.png")
     b.close()
 
+# The suite drives the real app against the real database, so it must clean
+# up the conversations it created. Otherwise every run leaves another identical
+# "what is 1920 x 1080" in the sidebar, and after ten runs the app looks broken.
+import urllib.request, json as _json
+try:
+    with urllib.request.urlopen("http://127.0.0.1:8000/api/conversations") as r:
+        for c in _json.load(r):
+            if c["title"].startswith(("What is 1920", "Test ", "/")):
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:8000/api/conversations/{c['id']}",
+                    method="DELETE")
+                urllib.request.urlopen(req).read()
+except Exception as e:
+    print(f"(cleanup skipped: {type(e).__name__})")
+
 print("=" * 62)
 bad = [r for r in results if not r[1]]
 for name, ok, detail in results:

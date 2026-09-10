@@ -746,3 +746,10 @@ kbd {
   color: var(--text-dim);
 }
 .mode-breach-note .ic { color: var(--red); }
+
+/* Inline keycaps in the composer hint sit inside 11px text — the drawer's
+   kbd sizing would tower over it. */
+.composer-hint kbd {
+  font-size: 9.5px; padding: 1px 5px; border-bottom-width: 1px;
+  vertical-align: baseline;
+}
