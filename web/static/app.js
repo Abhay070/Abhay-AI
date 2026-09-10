@@ -960,13 +960,52 @@ async function openMemory() {
       return;
     }
     for (const m of memories) {
-      const card = el('div', 'mem');
+      const card = el('div', 'mem' + (m.superseded_by ? ' superseded' : ''));
       const top = el('div', 'mem-top');
       top.appendChild(el('span', 'mem-cat', m.category));
+      // Provenance, at a glance. A memory the user confirmed reads differently
+      // from one the model inferred and might have wrong.
+      if (m.confirmed) top.appendChild(el('span', 'mem-badge ok', '✓ confirmed'));
+      else if (m.origin === 'user') top.appendChild(el('span', 'mem-badge', 'you'));
+      else top.appendChild(el('span', 'mem-badge',
+        'inferred · ' + Math.round((m.confidence || 0.7) * 100) + '%'));
       if (m.hits) top.appendChild(el('span', 'mem-hits', 'used ' + m.hits + '×'));
       top.appendChild(el('div', 'spacer'));
       const actions = el('div', 'mem-actions');
       const text = el('div', 'mem-text', m.content);
+
+      // A superseded memory is shown struck through, with why and an undo. It
+      // is not deleted — silently dropping something the user told us is the
+      // creepy behaviour this whole design avoids.
+      if (m.superseded_by) {
+        const why = el('div', 'mem-superseded',
+          m.supersede_reason || 'replaced by a newer memory');
+        const undo = el('button', null, 'restore');
+        undo.onclick = async () => {
+          await fetch('/api/memories/' + m.id + '/restore', { method: 'POST' });
+          toast('Restored'); openMemory();
+        };
+        actions.appendChild(undo);
+        const del2 = el('button', null, 'delete');
+        del2.onclick = async () => {
+          await fetch('/api/memories/' + m.id, { method: 'DELETE' });
+          card.remove(); toast('Forgotten');
+        };
+        actions.appendChild(del2);
+        top.appendChild(actions);
+        card.append(top, text, why);
+        box.appendChild(card);
+        continue;
+      }
+
+      if (!m.confirmed && m.origin !== 'user') {
+        const ok = el('button', null, 'confirm');
+        ok.onclick = async () => {
+          await fetch('/api/memories/' + m.id + '/confirm', { method: 'POST' });
+          toast('Confirmed'); openMemory();
+        };
+        actions.appendChild(ok);
+      }
 
       const edit = el('button', null, 'edit');
       edit.onclick = () => {

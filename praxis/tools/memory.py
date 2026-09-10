@@ -31,11 +31,23 @@ def remember(content: str, category: str = "fact", context: dict | None = None) 
     if len(content) > 500:
         return ToolResult(False, "Too long. Store the durable fact, not the paragraph.")
 
-    rid = _store.add_memory(content, category, (context or {}).get("conversation_id"))
+    rid = _store.add_memory(
+        content, category, (context or {}).get("conversation_id"),
+        origin="model", confidence=0.7)
     if rid is None:
         return ToolResult(True, f"Already remembered: {content}")
-    return ToolResult(True, f"Remembered ({category}): {content}",
-                      {"memory_id": rid, "content": content, "category": category})
+
+    # If this quietly retired an older, contradictory memory, say so — a memory
+    # that changes what the assistant believes without telling anyone is the
+    # kind of behaviour that makes memory feel creepy rather than useful.
+    retired = [m for m in _store.list_memories(include_superseded=True)
+               if m.get("superseded_by") == rid]
+    note = ""
+    if retired:
+        note = f" (replaces: {retired[0]['content'][:60]})"
+    return ToolResult(True, f"Remembered ({category}): {content}{note}",
+                      {"memory_id": rid, "content": content, "category": category,
+                       "superseded": [m["content"] for m in retired]})
 
 
 def recall(query: str = "") -> ToolResult:

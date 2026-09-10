@@ -245,15 +245,34 @@ async def export_conversation(cid: str) -> PlainTextResponse:
 # -- memory -----------------------------------------------------------------
 
 @app.get("/api/memories")
-async def list_memories(category: str = Query(""), q: str = Query("")) -> list[dict]:
+async def list_memories(category: str = Query(""), q: str = Query(""),
+                        include_superseded: bool = Query(True)) -> list[dict]:
+    # The panel shows superseded memories by default — marked, not hidden — so
+    # the user can see what was retired and undo it. The prompt is what filters
+    # them out; the audit view should not.
     if q:
-        return store.search_memories(q, limit=200)
-    return store.list_memories(category or None)
+        return store.search_memories(q, limit=200,
+                                     include_superseded=include_superseded)
+    return store.list_memories(category or None,
+                               include_superseded=include_superseded)
+
+
+@app.post("/api/memories/{rid}/restore")
+async def restore_memory(rid: str) -> dict:
+    store.restore_memory(rid)
+    return {"restored": rid}
+
+
+@app.post("/api/memories/{rid}/confirm")
+async def confirm_memory(rid: str) -> dict:
+    store.confirm_memory(rid)
+    return {"confirmed": rid}
 
 
 @app.post("/api/memories")
 async def create_memory(item: MemoryIn) -> dict:
-    rid = store.add_memory(item.content, item.category)
+    rid = store.add_memory(item.content, item.category,
+                           origin="user", confidence=1.0, confirmed=True)
     if rid is None:
         raise HTTPException(409, "Already remembered")
     return {"id": rid, "content": item.content, "category": item.category}

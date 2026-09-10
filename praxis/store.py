@@ -47,13 +47,21 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 
 CREATE TABLE IF NOT EXISTS memories (
-    id          TEXT PRIMARY KEY,
-    content     TEXT NOT NULL,
-    category    TEXT NOT NULL DEFAULT 'fact',
-    source_id   TEXT,
-    created_at  REAL NOT NULL,
-    updated_at  REAL NOT NULL,
-    hits        INTEGER NOT NULL DEFAULT 0
+    id            TEXT PRIMARY KEY,
+    content       TEXT NOT NULL,
+    category      TEXT NOT NULL DEFAULT 'fact',
+    source_id     TEXT,
+    created_at    REAL NOT NULL,
+    updated_at    REAL NOT NULL,
+    hits          INTEGER NOT NULL DEFAULT 0,
+    -- Provenance: where this came from and how much to trust it.
+    origin        TEXT NOT NULL DEFAULT 'model',   -- model | user | import
+    confidence    REAL NOT NULL DEFAULT 0.7,        -- 0..1
+    confirmed     INTEGER NOT NULL DEFAULT 0,       -- did the user confirm it?
+    -- Supersession: a newer memory can retire an older one instead of both
+    -- sitting in the prompt forever contradicting each other.
+    superseded_by TEXT,                             -- id of the memory that replaced this
+    supersede_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_memories_cat ON memories(category);
 
@@ -93,6 +101,27 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(SCHEMA)
+            self._migrate(db)
+
+    # A database created before provenance existed is missing these columns.
+    # Add them rather than force the user to delete their memories. Each ADD is
+    # guarded, so this is safe to run on every startup.
+    _MIGRATIONS = {
+        "memories": {
+            "origin": "TEXT NOT NULL DEFAULT 'model'",
+            "confidence": "REAL NOT NULL DEFAULT 0.7",
+            "confirmed": "INTEGER NOT NULL DEFAULT 0",
+            "superseded_by": "TEXT",
+            "supersede_reason": "TEXT",
+        },
+    }
+
+    def _migrate(self, db) -> None:
+        for table, columns in self._MIGRATIONS.items():
+            have = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
+            for name, decl in columns.items():
+                if name not in have:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -211,12 +240,24 @@ class Store:
     # -- memory ------------------------------------------------------------
 
     def add_memory(self, content: str, category: str = "fact",
-                   source_id: str | None = None) -> str | None:
+                   source_id: str | None = None, origin: str = "model",
+                   confidence: float = 0.7, confirmed: bool = False,
+                   supersedes: str | None = None) -> str | None:
         """Store a durable fact. Returns None if it duplicates one already held.
 
         The dedupe is deliberately crude — exact match after normalization. A
         smarter version would embed and compare, but crude-and-predictable beats
-        clever-and-surprising for something the user has to audit by hand."""
+        clever-and-surprising for something the user has to audit by hand.
+
+        Supersession keeps an old preference from contradicting a new one
+        forever. It fires two ways, and both are recorded on the retired row so
+        the user can see why it went quiet:
+          - the caller names what this replaces (the model saw the change), or
+          - a preference or goal shares its subject with an existing one, which
+            is detected here by keyword overlap and applied conservatively.
+        A superseded memory is never deleted — it stays visible in the panel,
+        marked, and can be restored. Silent deletion of something the user told
+        us is exactly the untrustworthy behaviour to avoid."""
         content = content.strip()
         if not content:
             return None
@@ -225,36 +266,108 @@ class Store:
         norm = content.lower().rstrip(".")
         with self.connect() as db:
             existing = db.execute(
-                "SELECT id FROM memories WHERE LOWER(RTRIM(content,'.')) = ?",
-                (norm,)).fetchone()
+                "SELECT id FROM memories WHERE LOWER(RTRIM(content,'.')) = ? "
+                "AND superseded_by IS NULL", (norm,)).fetchone()
             if existing:
-                db.execute("UPDATE memories SET updated_at = ? WHERE id = ?",
-                           (now(), existing["id"]))
+                db.execute("UPDATE memories SET updated_at = ?, hits = hits + 1 "
+                           "WHERE id = ?", (now(), existing["id"]))
                 return None
             rid, t = _id(), now()
             db.execute(
-                "INSERT INTO memories (id,content,category,source_id,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?)", (rid, content, category, source_id, t, t))
+                "INSERT INTO memories (id,content,category,source_id,created_at,"
+                "updated_at,origin,confidence,confirmed) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (rid, content, category, source_id, t, t, origin,
+                 max(0.0, min(1.0, confidence)), 1 if confirmed else 0))
+
+            # Retire what this replaces. An explicit id from the caller wins;
+            # otherwise look for a same-category preference/goal about the same
+            # subject and retire that.
+            retire, reason = None, ""
+            if supersedes:
+                row = db.execute("SELECT id FROM memories WHERE id = ? "
+                                 "AND superseded_by IS NULL", (supersedes,)).fetchone()
+                if row:
+                    retire, reason = row["id"], "replaced by a newer statement"
+            elif category in ("preference", "goal"):
+                retire, reason = self._find_superseded(db, content, category, rid)
+
+            if retire:
+                db.execute("UPDATE memories SET superseded_by = ?, "
+                           "supersede_reason = ?, updated_at = ? WHERE id = ?",
+                           (rid, reason, t, retire))
         return rid
 
-    def list_memories(self, category: str | None = None, limit: int = 200) -> list[dict]:
+    @staticmethod
+    def _find_superseded(db, content: str, category: str, new_id: str):
+        """A same-category preference/goal about the same subject, if any.
+
+        Conservative on purpose: it requires the two to share most of their
+        meaningful words, so "I prefer dark mode" replaces "I prefer light
+        mode" but not "I prefer tabs over spaces". A wrong supersession hides a
+        memory the user still holds, which is worse than keeping a stale one, so
+        the bar is high and the reason is always recorded."""
+        import re
+        stop = {"i", "prefer", "like", "want", "now", "the", "a", "an", "to",
+                "my", "me", "use", "using", "would", "rather", "instead", "of",
+                "for", "and", "is", "am", "in", "on", "with", "no", "longer",
+                "switch", "switched", "moving", "changed", "over"}
+        def sig(text):
+            return {w for w in re.findall(r"[a-z0-9]+", text.lower())
+                    if w not in stop and len(w) > 2}
+        new_sig = sig(content)
+        if len(new_sig) < 1:
+            return None, ""
+        for row in db.execute(
+                "SELECT id, content FROM memories WHERE category = ? "
+                "AND superseded_by IS NULL AND id != ?", (category, new_id)):
+            old_sig = sig(row["content"])
+            if not old_sig:
+                continue
+            overlap = len(new_sig & old_sig)
+            smaller = min(len(new_sig), len(old_sig))
+            # Share most of the smaller signature, and it is not identical
+            # (an exact match was already caught by the dedupe above).
+            if smaller and overlap >= max(1, round(smaller * 0.6)) \
+                    and new_sig != old_sig:
+                return row["id"], f"superseded by: {content[:80]}"
+        return None, ""
+
+    def list_memories(self, category: str | None = None, limit: int = 200,
+                      include_superseded: bool = False) -> list[dict]:
+        active = "" if include_superseded else "AND superseded_by IS NULL "
         with self.connect() as db:
             if category:
                 rows = db.execute(
-                    "SELECT * FROM memories WHERE category = ? ORDER BY updated_at DESC "
-                    "LIMIT ?", (category, limit)).fetchall()
+                    f"SELECT * FROM memories WHERE category = ? {active}"
+                    "ORDER BY updated_at DESC LIMIT ?", (category, limit)).fetchall()
             else:
                 rows = db.execute(
-                    "SELECT * FROM memories ORDER BY updated_at DESC LIMIT ?",
-                    (limit,)).fetchall()
+                    f"SELECT * FROM memories WHERE 1=1 {active}"
+                    "ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
-    def search_memories(self, query: str, limit: int = 20) -> list[dict]:
+    def search_memories(self, query: str, limit: int = 20,
+                        include_superseded: bool = False) -> list[dict]:
+        active = "" if include_superseded else "AND superseded_by IS NULL "
         with self.connect() as db:
             rows = db.execute(
-                "SELECT * FROM memories WHERE content LIKE ? ORDER BY updated_at DESC "
-                "LIMIT ?", (f"%{query}%", limit)).fetchall()
+                f"SELECT * FROM memories WHERE content LIKE ? {active}"
+                "ORDER BY updated_at DESC LIMIT ?",
+                (f"%{query}%", limit)).fetchall()
         return [dict(r) for r in rows]
+
+    def restore_memory(self, rid: str) -> None:
+        """Un-supersede a memory the heuristic retired by mistake."""
+        with self.connect() as db:
+            db.execute("UPDATE memories SET superseded_by = NULL, "
+                       "supersede_reason = NULL, updated_at = ? WHERE id = ?",
+                       (now(), rid))
+
+    def confirm_memory(self, rid: str) -> None:
+        with self.connect() as db:
+            db.execute("UPDATE memories SET confirmed = 1, confidence = 1.0, "
+                       "updated_at = ? WHERE id = ?", (now(), rid))
 
     def update_memory(self, rid: str, content: str) -> None:
         with self.connect() as db:

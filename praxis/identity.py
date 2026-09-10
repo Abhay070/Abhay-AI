@@ -189,6 +189,10 @@ These are durable facts from previous conversations. Use them when relevant. Do
 not recite them back unprompted, and never let a remembered preference override
 an explicit instruction in the current message.
 
+If the user states a preference that contradicts one of these, the new
+statement wins — call remember with the new preference; the old one is retired
+automatically. Do not argue from a stale memory.
+
 {memories}
 """
 

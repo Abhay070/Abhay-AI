@@ -397,6 +397,127 @@ def test_memory_dedupes_case_and_punctuation():
         os.remove(path)
 
 
+def test_a_changed_preference_supersedes_the_old_one():
+    """An old preference and its replacement must not both sit in the prompt
+    forever contradicting each other."""
+    store, path = fresh_store()
+    try:
+        store.add_memory("I prefer light mode in the editor", "preference")
+        new = store.add_memory("I prefer dark mode in the editor now", "preference")
+        active = [m["content"] for m in store.list_memories()]
+        assert active == ["I prefer dark mode in the editor now"], active
+        # The old one is retired, not deleted, and says why.
+        allm = store.list_memories(include_superseded=True)
+        old = next(m for m in allm if "light mode" in m["content"])
+        assert old["superseded_by"] == new
+        assert old["supersede_reason"], "no reason recorded"
+    finally:
+        os.remove(path)
+
+
+def test_supersession_does_not_fire_on_an_unrelated_preference():
+    """A wrong supersession hides a memory the user still holds, which is worse
+    than keeping a stale one. Different subjects must both survive."""
+    store, path = fresh_store()
+    try:
+        store.add_memory("I prefer dark mode", "preference")
+        store.add_memory("I prefer tabs over spaces", "preference")
+        assert len(store.list_memories()) == 2, \
+            [m["content"] for m in store.list_memories()]
+    finally:
+        os.remove(path)
+
+
+def test_facts_are_never_auto_superseded():
+    """Two facts about different-looking things are not a contradiction the
+    heuristic should resolve. Only preferences and goals are eligible."""
+    store, path = fresh_store()
+    try:
+        store.add_memory("The user's name is Abhay", "fact")
+        store.add_memory("The user's name is Abhay Bailey", "fact")
+        assert len(store.list_memories()) == 2
+    finally:
+        os.remove(path)
+
+
+def test_an_explicitly_superseded_memory_is_retired():
+    store, path = fresh_store()
+    try:
+        old = store.add_memory("Deadline is Friday", "decision")
+        store.add_memory("Deadline moved to Monday", "decision", supersedes=old)
+        active = [m["content"] for m in store.list_memories()]
+        assert "Deadline is Friday" not in active
+        assert "Deadline moved to Monday" in active
+    finally:
+        os.remove(path)
+
+
+def test_a_superseded_memory_can_be_restored():
+    """The heuristic can be wrong, so the user must be able to undo it."""
+    store, path = fresh_store()
+    try:
+        old = store.add_memory("I prefer light mode", "preference")
+        store.add_memory("I prefer dark mode now", "preference")
+        assert old not in [m["id"] for m in store.list_memories()]
+        store.restore_memory(old)
+        assert old in [m["id"] for m in store.list_memories()]
+    finally:
+        os.remove(path)
+
+
+def test_superseded_memories_never_reach_the_prompt():
+    """Recall selection must skip them, or supersession bought nothing."""
+    from praxis.agent import select_memories
+    store, path = fresh_store()
+    try:
+        store.add_memory("I prefer light mode in the editor", "preference")
+        store.add_memory("I prefer dark mode in the editor now", "preference")
+        picked = select_memories(store, "what editor theme do I use?")
+        contents = " ".join(m["content"] for m in picked)
+        assert "dark mode" in contents, contents
+        assert "light mode" not in contents, "a superseded memory reached the prompt"
+    finally:
+        os.remove(path)
+
+
+def test_confirming_a_memory_raises_its_confidence():
+    store, path = fresh_store()
+    try:
+        rid = store.add_memory("Prefers Rust", "preference")
+        assert store.list_memories()[0]["confidence"] == 0.7
+        assert store.list_memories()[0]["confirmed"] == 0
+        store.confirm_memory(rid)
+        m = store.list_memories()[0]
+        assert m["confirmed"] == 1 and m["confidence"] == 1.0
+    finally:
+        os.remove(path)
+
+
+def test_provenance_survives_an_old_database(tmp_path=None):
+    """A database created before provenance existed must migrate, not crash."""
+    import sqlite3, tempfile, time
+    path = tempfile.mktemp(suffix=".db")
+    # Build the pre-provenance schema by hand.
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE memories (id TEXT PRIMARY KEY, content TEXT, "
+               "category TEXT, source_id TEXT, created_at REAL, updated_at REAL, "
+               "hits INTEGER DEFAULT 0)")
+    db.execute("INSERT INTO memories VALUES ('m1','old fact','fact',NULL,?,?,0)",
+               (time.time(), time.time()))
+    db.commit(); db.close()
+    try:
+        store = Store(path)   # opening it runs the migration
+        rows = store.list_memories()
+        assert len(rows) == 1 and rows[0]["content"] == "old fact"
+        assert rows[0]["origin"] == "model" and rows[0]["confidence"] == 0.7
+        # And the migrated store still supports the new behaviour.
+        store.add_memory("I prefer light mode", "preference")
+        store.add_memory("I prefer dark mode now", "preference")
+        assert len([m for m in store.list_memories() if "mode" in m["content"]]) == 1
+    finally:
+        os.remove(path)
+
+
 def test_memory_recall_prefers_relevant():
     from praxis.agent import select_memories
     store, path = fresh_store()

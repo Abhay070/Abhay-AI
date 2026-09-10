@@ -77,6 +77,17 @@ with sync_playwright() as p:
 
     pg.click("#openMemory"); pg.wait_for_timeout(800)
     check("btn: memory drawer opens", pg.locator(".drawer").count() == 1)
+    pg.evaluate("async () => {\n      await fetch('/api/memories', {method:'POST', headers:{'Content-Type':'application/json'},\n        body: JSON.stringify({content:'I prefer light mode', category:'preference'})});\n      await fetch('/api/memories', {method:'POST', headers:{'Content-Type':'application/json'},\n        body: JSON.stringify({content:'I prefer dark mode now', category:'preference'})});\n    }")
+    pg.evaluate("closeDrawers()"); pg.wait_for_timeout(150)
+    pg.click("#openMemory"); pg.wait_for_timeout(700)
+    check("mem: provenance badge shown", pg.locator(".mem-badge").count() >= 1,
+          f"{pg.locator('.mem-badge').count()} badges")
+    check("mem: superseded memory marked",
+          pg.locator(".mem.superseded").count() == 1,
+          f"{pg.locator('.mem.superseded').count()} superseded")
+    check("mem: retired memory offers restore",
+          pg.locator(".mem.superseded button", has_text="restore").count() == 1)
+    pg.evaluate("closeDrawers()"); pg.wait_for_timeout(150)
     pg.keyboard.press("Escape"); pg.wait_for_timeout(250)
 
     pg.click("#openSettings"); pg.wait_for_timeout(800)
