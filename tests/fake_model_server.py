@@ -101,7 +101,8 @@ class ChatRequest(BaseModel):
 
 
 def build(persona: str, delay: float, broken: bool,
-          rate_limit: int = 0, strict: bool = False) -> FastAPI:
+          rate_limit: int = 0, strict: bool = False,
+          window: str = "minute") -> FastAPI:
     app = FastAPI()
     state = {"rate_limited": 0}
 
@@ -135,6 +136,17 @@ def build(persona: str, delay: float, broken: bool,
         # hidden in the message body rather than only in the header.
         if state["rate_limited"] < rate_limit:
             state["rate_limited"] += 1
+            if window == "day":
+                # The shape that used to be catastrophic: a wait of hours,
+                # which the old code clamped to 45 seconds and retried against.
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": {
+                        "message": "Rate limit reached for model fake in "
+                                   "organization org_test on requests per day "
+                                   "(RPD): Limit 1000, Used 1000. Please try "
+                                   "again in 6h12m30s.",
+                        "type": "requests", "code": "rate_limit_exceeded"}})
             return JSONResponse(
                 status_code=429,
                 headers={"retry-after": "1"},
@@ -238,6 +250,9 @@ def main() -> None:
                         help="always fail, to test member-drop handling")
     parser.add_argument("--rate-limit", type=int, default=0,
                         help="429 the first N requests, Groq-shaped")
+    parser.add_argument("--rate-limit-window", default="minute",
+                        choices=["minute", "day"],
+                        help="per-minute (waitable) or daily (not)")
     parser.add_argument("--strict", action="store_true",
                         help="400 on parameters this endpoint does not know")
     args = parser.parse_args()
@@ -245,9 +260,10 @@ def main() -> None:
     import uvicorn
     print(f"fake model :{args.port} persona={args.persona} "
           f"delay={args.delay}s broken={args.broken} "
-          f"rate_limit={args.rate_limit} strict={args.strict}")
+          f"rate_limit={args.rate_limit}/{args.rate_limit_window} "
+          f"strict={args.strict}")
     uvicorn.run(build(args.persona, args.delay, args.broken,
-                      args.rate_limit, args.strict),
+                      args.rate_limit, args.strict, args.rate_limit_window),
                 host="127.0.0.1", port=args.port, log_level="error")
 
 

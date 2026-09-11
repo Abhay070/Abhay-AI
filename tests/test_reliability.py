@@ -56,7 +56,8 @@ GREEN, RED, YELLOW, DIM, OFF = (
     "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m")
 
 PORTS = {"thinker": 9121, "walled": 9122, "broken": 9123,
-         "staller": 9124, "wrong": 9125, "accurate": 9126, "hedging": 9127}
+         "staller": 9124, "wrong": 9125, "accurate": 9126, "hedging": 9127,
+         "spent": 9128, "spare": 9129, "limited": 9130}
 ARGS = {
     "thinker": ["--persona", "thinker"],
     "walled":  ["--persona", "accurate", "--rate-limit", "99"],
@@ -65,6 +66,11 @@ ARGS = {
     "wrong":   ["--persona", "wrong"],
     "accurate": ["--persona", "accurate"],
     "hedging": ["--persona", "hedging"],
+    # Out of quota for the day — waiting cannot help, only another backend can.
+    "spent":   ["--persona", "accurate", "--rate-limit", "99",
+                "--rate-limit-window", "day"],
+    "spare":   ["--persona", "accurate"],
+    "limited": ["--persona", "accurate", "--rate-limit", "1"],
 }
 _servers: list[subprocess.Popen] = []
 
@@ -251,6 +257,114 @@ def s_failover():
     if not notes:
         return False, "failed over but said nothing about the dead primary"
     return True, "skipped the dead primary, noted why"
+
+
+def _pool_run(pool: str, question: str, **extra):
+    """Run one turn with a real router over a real pool of HTTP servers."""
+    from praxis.router import Router
+    path = tempfile.mktemp(suffix=".db")
+    store = Store(path)
+    settings = Settings(enable_tools=False, enable_memory=False,
+                        enable_mode_contracts=False, enable_momentum=False,
+                        max_rate_limit_retries=1, capacity_pool=pool, **extra)
+    router = Router(settings, store)
+    # The pool specs name personas; build them against the local fake servers.
+    router.build = lambda slot: member(slot.spec.split(":")[0])
+    agent = Agent(store, settings, router=router)
+
+    async def go():
+        cid = store.create_conversation("t")
+        store.add_message(cid, "user", question)
+        first = router.pick()
+        provider = router.build(first)
+        events = [e async for e in agent.run(provider, cid,
+                                             store.get_messages(cid), "standard")]
+        answer = store.get_messages(cid)[-1]
+        return (answer["content"] if answer["role"] == "assistant" else ""), events, router
+
+    try:
+        return asyncio.run(go())
+    finally:
+        os.remove(path)
+
+
+@scenario("a daily quota hands the turn to the next backend")
+def s_daily_failover():
+    answer, events, _ = _pool_run("spent:m,spare:m", "What is the capital of Australia?")
+    kinds = [e.type for e in events]
+    if "provider_switch" not in kinds:
+        return False, f"no failover happened: {kinds}"
+    if "error" in kinds:
+        return False, "the turn still failed"
+    if not answer.strip():
+        return False, "no answer was stored"
+    switch = next(e for e in events if e.type == "provider_switch")
+    if switch.data.get("reason") != "day":
+        return False, f"misread the limit as {switch.data.get('reason')}"
+    return True, f"switched on a daily cap and answered ({len(answer)} chars)"
+
+
+@scenario("a daily quota is never waited out or paid for with history")
+def s_daily_no_wait():
+    started = time.time()
+    answer, events, _ = _pool_run("spent:m,spare:m", "What is the capital of Australia?")
+    elapsed = time.time() - started
+    # The old code clamped a 6-hour reset to 45s and retried three times.
+    if elapsed > 10:
+        return False, f"waited {elapsed:.0f}s against a daily cap"
+    if any(e.type == "rate_limited" for e in events):
+        return False, "treated a daily cap as a waitable per-minute limit"
+    return True, f"failed over in {elapsed:.1f}s without waiting or shrinking"
+
+
+@scenario("a per-minute limit still waits rather than burning a backend")
+def s_minute_still_waits():
+    answer, events, _ = _pool_run("limited:m,spare:m", "What is 2+2?")
+    kinds = [e.type for e in events]
+    if "rate_limited" not in kinds:
+        return False, f"did not wait out a per-minute limit: {kinds}"
+    if not answer.strip():
+        return False, "no answer"
+    return True, "waited and retried the same backend, as it should"
+
+
+@scenario("a whole pool spent says so, naming every backend and its reset")
+def s_pool_exhausted():
+    answer, events, router = _pool_run("spent:m", "What is the capital of Australia?")
+    errors = [e for e in events if e.type == "error"]
+    if not errors:
+        return False, "no error surfaced"
+    message = errors[0].data["message"]
+    for needed in ("Out of capacity", "back in", "CAPACITY_POOL"):
+        if needed.lower() not in message.lower():
+            return False, f"message missing {needed!r}"
+    return True, "named each backend, its reset, and how to widen the pool"
+
+
+@scenario("a cooldown survives a restart")
+def s_cooldown_persists():
+    from praxis.router import Router
+    path = tempfile.mktemp(suffix=".db")
+    try:
+        settings = Settings(capacity_pool="spent:m,spare:m")
+        store = Store(path)
+        router = Router(settings, store)
+        slot = router.slots()[0]
+
+        class DailyLimit:
+            window, reset_at, retry_after, source = "day", time.time() + 6 * 3600, 0, "body"
+        router.note_rate_limit(slot, DailyLimit())
+
+        # A fresh process, same file. A daily quota does not reset because the
+        # server did, and an in-memory ledger would forget that.
+        reborn = Router(settings, Store(path))
+        if reborn.standing(reborn.slots()[0]).available(time.time()):
+            return False, "the cooldown was forgotten on restart"
+        if reborn.pick().spec != "spare:m":
+            return False, "did not skip the benched backend after restart"
+        return True, "cooldown reloaded from disk and respected"
+    finally:
+        os.remove(path)
 
 
 def main() -> int:

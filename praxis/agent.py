@@ -138,9 +138,13 @@ def _shrink(messages: list[dict]) -> int:
 
 
 class Agent:
-    def __init__(self, store, settings: Settings):
+    def __init__(self, store, settings: Settings, router=None):
         self.store = store
         self.settings = settings
+        if router is None and settings.enable_capacity_router:
+            from .router import Router
+            router = Router(settings, store)
+        self.router = router
 
     def rate_limit_advice(self, error, messages: list[dict], attempts: int) -> str:
         """A rate limit the waiting could not fix, explained in terms of the fix.
@@ -307,14 +311,23 @@ class Agent:
 
     async def _one_pass(self, provider: Provider, messages: list[dict],
                         tool_names: set[str], conversation_id: str,
-                        out: dict) -> AsyncIterator[Event]:
+                        out: dict, router=None, slot=None) -> AsyncIterator[Event]:
         """One full generation, including any tool rounds it needs.
 
         Writes the finished visible text and counters into `out` rather than
-        returning them, because an async generator cannot do both."""
+        returning them, because an async generator cannot do both.
+
+        `provider` is rebound in place when a backend runs out of quota, so a
+        turn that began on an exhausted free tier finishes on the next one
+        instead of dying. That rebinding is the whole point: before it, the
+        backend was chosen once before the first token and held whatever
+        happened, which is why running out of quota looked like the assistant
+        simply going quiet."""
         visible = ""
         rounds = 0
         completion_chars = 0
+        tried: set[str] = {slot.budget_key} if slot else set()
+        switches: list[dict] = []
 
         while True:
             buffer = ""
@@ -359,23 +372,85 @@ class Agent:
                                 call_found = parsed[0]
                                 break
                 except RateLimited as e:
-                    # Only safe to replay when this round put nothing on screen.
+                    if router and slot:
+                        router.note_rate_limit(slot, e)
                     spent = rl_attempt >= self.settings.max_rate_limit_retries
-                    if spent or len(visible) > before:
+                    streamed = len(visible) - before
+
+                    # Waiting is the right answer to a per-minute limit and the
+                    # wrong answer to a daily one. Telling them apart is the
+                    # whole reason praxis/limits.py exists: a daily cap used to
+                    # be clamped to a 45-second wait, retried three times, and
+                    # paid for by deleting half the conversation to make a
+                    # request smaller that was never too big.
+                    hopeless = e.is_daily or spent
+
+                    if hopeless and router:
+                        # Too much already on screen to throw away — keep it and
+                        # stop, rather than re-spending a nearly-finished answer
+                        # on another backend.
+                        if streamed > self.settings.capacity_restart_max_chars:
+                            note = ("\n\n_This answer stopped early — "
+                                    f"{provider.label} ran out of capacity "
+                                    "mid-sentence. Ask me to continue and I'll "
+                                    "pick up from here._")
+                            visible += note
+                            yield Event("token", {"text": note})
+                            yield Event("truncated", {
+                                "answered_by": provider.label,
+                                "chars": streamed,
+                            })
+                            break
+
+                        nxt = router.pick(exclude=tried)
+                        if nxt is not None:
+                            # Discard this round's partial text and hand the
+                            # turn to the next backend. Stitching two models'
+                            # prose together at an arbitrary token boundary
+                            # would be "a change in the response" and would
+                            # defeat the constraint and contract checks, which
+                            # score the whole answer.
+                            visible = visible[:before]
+                            switches.append({"from": provider.label,
+                                             "to": nxt.spec, "reason": e.window})
+                            if slot:
+                                router.end(slot)
+                            slot = nxt
+                            tried.add(nxt.budget_key)
+                            router.begin(slot)
+                            provider = router.build(slot)
+                            yield Event("provider_switch", {
+                                "from": switches[-1]["from"],
+                                "to": nxt.spec,
+                                "reason": e.window,
+                                "detail": str(e)[:160],
+                                "keep_chars": before,
+                            })
+                            continue
+                        # Nothing left in the pool. A per-minute limit still
+                        # deserves its own advice — a wider pool is no answer
+                        # to a request that is simply too big for one minute.
+                        lead = ("" if e.is_daily
+                                else self.rate_limit_advice(e, messages, rl_attempt))
+                        failed = router.exhaustion_report(lead)
+                        break
+
+                    if hopeless or streamed > 0:
                         failed = self.rate_limit_advice(e, messages, rl_attempt)
                         break
+
                     delay = min(max(e.retry_after, 2.0) + 0.5, 45.0)
-                    # Waiting alone only helps if the request would fit next
-                    # minute. A per-minute token allowance is spent by the size
-                    # of the request, so a conversation that has grown past the
-                    # allowance never fits, however long you wait. Shrink as
-                    # well as wait — the oldest turn is the one worth least.
+                    # Per-minute only: a token allowance is spent by the size of
+                    # the request, so shrinking genuinely helps here. Against a
+                    # daily cap it would be pure loss, which is why this branch
+                    # is now unreachable for one.
                     dropped = _shrink(messages)
                     yield Event("rate_limited", {
                         "seconds": round(delay, 1),
                         "attempt": rl_attempt + 1,
                         "of": self.settings.max_rate_limit_retries,
                         "dropped_turns": dropped,
+                        "window": e.window,
                         "message": str(e),
                     })
                     await asyncio.sleep(delay)
@@ -451,6 +526,9 @@ class Agent:
         out["text"] = toolkit.strip_calls(visible).strip()
         out["rounds"] = rounds
         out["completion_chars"] = completion_chars
+        out["answered_by"] = provider.label
+        if switches:
+            out["switches"] = switches
 
     async def _council_pass(self, messages: list[dict], question: str,
                             strategy: str, out: dict) -> AsyncIterator[Event]:
@@ -605,6 +683,18 @@ class Agent:
         constraints = (detect_constraints(last_user)
                        if self.settings.enable_constraint_check else [])
 
+        # The caller decides who opens the turn — the server asks the router,
+        # which is where quality order and concurrency spreading happen. The
+        # agent never second-guesses that choice; it only reaches for the
+        # router when the chosen backend runs out mid-turn.
+        slot = None
+        if self.router:
+            slot = self.router.slot_for(provider)
+            if slot is not None:
+                self.router.begin(slot)
+                provider.meter = self.router._observe
+                provider.budget_key = slot.budget_key
+
         strategy = (strategy or self.settings.default_strategy).lower()
         if strategy not in council_mod.STRATEGIES:
             strategy = "single"
@@ -653,7 +743,8 @@ class Agent:
                     yield event
             else:
                 async for event in self._one_pass(provider, working, tool_names,
-                                                  conversation_id, out):
+                                                  conversation_id, out,
+                                                  router=self.router, slot=slot):
                     yield event
             if "error" in out:
                 return
@@ -734,14 +825,30 @@ class Agent:
         message_id = self.store.add_message(
             conversation_id, "assistant", final,
             {"mode": mode_key, "provider": provider.name,
+             "answered_by": out.get("answered_by", provider.label),
+             "switches": out.get("switches", []),
              "strategy": strategy,
              "tool_rounds": total_rounds, "memories_used": len(memories),
              "constraint_attempts": attempts},
         )
 
+        if self.router:
+            if slot is not None:
+                self.router.end(slot)
+                self.router.note_success(slot)
+            self.router.flush(conversation_id, fallback={
+                "budget_key": getattr(provider, "budget_key", "") or provider.name,
+                "backend": provider.name,
+                "model": getattr(provider, "model", ""),
+                "prompt_tokens": prompt_chars // CHARS_PER_TOKEN,
+                "completion_tokens": completion_chars // CHARS_PER_TOKEN,
+            })
+
         yield Event("done", {
             "message_id": message_id,
             "strategy": strategy,
+            "answered_by": out.get("answered_by", provider.label),
+            "switches": out.get("switches", []),
             "elapsed": round(time.time() - started, 2),
             "tool_rounds": total_rounds,
             "constraint_attempts": attempts,

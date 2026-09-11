@@ -824,3 +824,16 @@ kbd {
   font-size: 11.5px; color: var(--warn); margin-top: 5px;
   padding-left: 10px; border-left: 2px solid var(--warn);
 }
+
+/* A backend ran out and another finished the answer. Always visible — in both
+   Normal and Debug views — because who wrote your answer is not machinery the
+   user may optionally inspect, it is part of the answer. */
+.switch-note {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--text-dim);
+  padding: 7px 11px; margin: 0 0 9px;
+  background: var(--bg-inset); border-left: 2px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+.switch-note .ic { color: var(--accent); font-size: 13px; }
+.switch-note b { color: var(--text); font-weight: 600; }

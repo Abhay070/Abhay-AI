@@ -33,6 +33,8 @@ from typing import AsyncIterator
 
 import httpx
 
+from . import limits
+
 Message = dict[str, str]
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -43,17 +45,55 @@ class ProviderError(RuntimeError):
 
 
 class RateLimited(ProviderError):
-    """A quota was hit. Carries when the provider said to come back.
+    """A quota was hit. Carries which one, and when it lifts.
 
     Separate from ProviderError because the correct response is different:
     a rate limit is not a broken backend, it is a working one asking you to
     wait. Free tiers hit this constantly — Groq's on-demand tier allows 8,000
     tokens per minute — and an assistant that gives up on the first 429 is
-    unusable on exactly the tier most people start on."""
+    unusable on exactly the tier most people start on.
 
-    def __init__(self, message: str, retry_after: float = 0.0) -> None:
+    `window` is the field that matters. A per-minute refusal is worth waiting
+    out; a daily one is not, and treating the two alike is how a seven-hour
+    cooldown became a 45-second wait, three wasted retries, and half the
+    conversation deleted to make a request smaller that was never too big.
+
+    Every new field is keyword-only with a default, so existing raise sites and
+    every `except RateLimited` keep working untouched."""
+
+    def __init__(self, message: str, retry_after: float = 0.0, *,
+                 provider: str = "", model: str = "", budget_key: str = "",
+                 window: str = "unknown", scope: str = "unknown",
+                 limit: int = 0, remaining: int = -1, reset_at: float = 0.0,
+                 source: str = "inferred") -> None:
         super().__init__(message)
         self.retry_after = retry_after
+        self.provider = provider
+        self.model = model
+        self.budget_key = budget_key
+        self.window = window
+        self.scope = scope
+        self.limit = limit
+        self.remaining = remaining
+        # Absolute epoch, never a delta: this gets persisted and compared after
+        # a restart, where "600 seconds from now" would mean nothing.
+        self.reset_at = reset_at
+        self.source = source
+
+    @property
+    def is_daily(self) -> bool:
+        """Waiting cannot fix this one."""
+        return self.window in ("day", "hour")
+
+    @classmethod
+    def from_response(cls, label: str, body: str, headers, *, provider: str = "",
+                      model: str = "", budget_key: str = "") -> "RateLimited":
+        fact = limits.classify(body, headers)
+        return cls(f"{label} rate limit: {_tidy(body)}", fact.retry_after,
+                   provider=provider, model=model, budget_key=budget_key,
+                   window=fact.window, scope=fact.scope, limit=fact.limit,
+                   remaining=fact.remaining, reset_at=fact.reset_at,
+                   source=fact.source)
 
 
 class EmptyAnswer(ProviderError):
@@ -122,7 +162,8 @@ def _rejected_param(body: str) -> str:
     if not re.search(r"unsupported|unrecogni[sz]ed|unknown|not supported|"
                      r"invalid|unexpected", body, re.IGNORECASE):
         return ""
-    for name in ("reasoning_effort", "max_completion_tokens", "max_tokens"):
+    for name in ("stream_options", "reasoning_effort", "max_completion_tokens",
+                 "max_tokens"):
         if name in body:
             return name
     return ""
@@ -151,6 +192,21 @@ class Provider(ABC):
     name = "provider"
     label = "Provider"
     free = False
+    # Set by the router. Called with LimitFact objects and usage dicts as they
+    # are observed. None means nobody is listening, which is the case for the
+    # demo backend, the scratch model, and every test that predates this.
+    meter = None
+    budget_key = ""
+
+    def report(self, facts=None, usage=None) -> None:
+        """Hand what a response revealed to whoever is keeping the ledger."""
+        if self.meter is None:
+            return
+        try:
+            self.meter(self, facts or [], usage or {})
+        except Exception:
+            # Accounting must never be able to break a turn.
+            pass
 
     @abstractmethod
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
@@ -385,7 +441,10 @@ class OpenAICompatibleProvider(Provider):
 
     def payload(self, messages: list[Message], drop: set[str]) -> dict:
         body: dict = {"model": self.model, "messages": messages, "stream": True,
-                      "max_tokens": self.max_tokens}
+                      "max_tokens": self.max_tokens,
+                      # Real token counts in the final chunk. Dropped
+                      # automatically by any endpoint that refuses it.
+                      "stream_options": {"include_usage": True}}
         if self.reasoning_effort and REASONING_MODELS.search(self.model):
             body["reasoning_effort"] = self.reasoning_effort
         for key in drop:
@@ -456,6 +515,12 @@ class OpenAICompatibleProvider(Provider):
                             "POST", f"{self.base}/chat/completions",
                             json=self.payload(messages, drop),
                             headers=headers) as r:
+                        # Every response carries the account's standing, not
+                        # just the refusals. Reading it here is what lets the
+                        # router see a quota running low instead of finding out
+                        # by being turned away.
+                        self.report(facts=limits.read_headers(r.headers))
+
                         if r.status_code >= 400:
                             body = (await r.aread()).decode()[:400]
                             refused = _rejected_param(body)
@@ -463,9 +528,10 @@ class OpenAICompatibleProvider(Provider):
                                 drop.add(refused)
                                 retry_with_fewer_params = True
                             elif r.status_code == 429:
-                                raise RateLimited(
-                                    f"{self.label} rate limit: {_tidy(body)}",
-                                    _retry_after(r.headers, body))
+                                raise RateLimited.from_response(
+                                    self.label, body, r.headers,
+                                    provider=self.name, model=self.model,
+                                    budget_key=self.budget_key)
                             elif r.status_code == 404 and "model" in body.lower():
                                 raise ProviderError(
                                     f"{self.model!r} is not a model this account "
@@ -482,8 +548,18 @@ class OpenAICompatibleProvider(Provider):
                                 if body == "[DONE]":
                                     break
                                 try:
-                                    choice = json.loads(body)["choices"][0]
-                                except (json.JSONDecodeError, KeyError, IndexError):
+                                    parsed = json.loads(body)
+                                except json.JSONDecodeError:
+                                    continue
+                                # The final chunk carries real token counts
+                                # when the endpoint supports it — measured
+                                # beats four-characters-per-token every time.
+                                measured = limits.read_usage(parsed)
+                                if measured:
+                                    self.report(usage=measured)
+                                try:
+                                    choice = parsed["choices"][0]
+                                except (KeyError, IndexError):
                                     continue
                                 finish = choice.get("finish_reason") or finish
                                 delta = choice.get("delta") or {}
@@ -602,8 +678,9 @@ class GeminiProvider(Provider):
                     if r.status_code >= 400:
                         body = (await r.aread()).decode()[:400]
                         if r.status_code == 429:
-                            raise RateLimited(f"Gemini rate limit: {_tidy(body)}",
-                                              _retry_after(r.headers, body))
+                            raise RateLimited.from_response(
+                                "Gemini", body, r.headers, provider=self.name,
+                                model=self.model, budget_key=self.budget_key)
                         raise ProviderError(f"HTTP {r.status_code}: {_tidy(body)}")
                     async for line in r.aiter_lines():
                         if not line.startswith("data: "):

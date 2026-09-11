@@ -87,6 +87,19 @@ class Settings:
     # A rate limit is not a broken backend; it is a working one asking you to
     # wait. Wait, then, rather than failing the turn.
     max_rate_limit_retries: int = env_int("MAX_RATE_LIMIT_RETRIES", 3)
+
+    # --- capacity ----------------------------------------------------------
+    # An ordered pool of backends, best first. The order IS the quality order —
+    # nothing reorders it by headroom, because a failover that quietly drops to
+    # a weaker model while reporting success is the failure this refuses to
+    # make. Uses the same spec grammar as the council: backend:model@base-url.
+    # Empty falls back to PROVIDER + FALLBACK_CHAIN, so an existing .env keeps
+    # working untouched.
+    capacity_pool: str = env("CAPACITY_POOL", "")
+    enable_capacity_router: bool = env_bool("CAPACITY_ROUTER", True)
+    # Past this much already streamed, a mid-answer failover stops and keeps
+    # what it has rather than re-spending the whole answer on another backend.
+    capacity_restart_max_chars: int = env_int("CAPACITY_RESTART_MAX_CHARS", 1200)
     # Ceiling on tool-call rounds in a single turn, so a confused model cannot
     # spin forever burning tokens.
     max_tool_rounds: int = env_int("MAX_TOOL_ROUNDS", 6)

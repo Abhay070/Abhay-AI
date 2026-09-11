@@ -29,6 +29,7 @@ import httpx                                                     # noqa: E402
 
 from praxis import contracts as contracts_mod                    # noqa: E402
 from praxis import modes as modes_mod                            # noqa: E402
+from praxis import limits                                        # noqa: E402
 from praxis import providers                                     # noqa: E402
 from praxis import tools as toolkit                              # noqa: E402
 from praxis.agent import CHARS_PER_TOKEN, Agent                  # noqa: E402
@@ -180,7 +181,36 @@ async def main() -> int:
             "please report this — it is the exact bug the EmptyAnswer class "
             "exists to prevent")
 
-    # --- 5. promises -------------------------------------------------------
+    # --- 5. the pool -------------------------------------------------------
+    print(f"\n{BOLD}Capacity pool{OFF}")
+    if not settings.enable_capacity_router:
+        warn("the capacity router is off", "CAPACITY_ROUTER=false",
+             "One backend runs out and the turn dies. Turn it on.")
+    else:
+        from praxis.router import Router
+        router = Router(settings, store)
+        rows = router.status()
+        if len(rows) < 2:
+            warn(f"only {len(rows)} backend in the pool",
+                 "one quota, no failover",
+                 "When it runs out, Praxis has nowhere to go. Add a second "
+                 "free tier to CAPACITY_POOL in .env — Gemini's is free and "
+                 "its quota is entirely separate from Groq's.")
+        for row in rows:
+            left = []
+            if row["day_remaining"] >= 0:
+                left.append(f"{row['day_remaining']:,} today")
+            if row["minute_remaining"] >= 0:
+                left.append(f"{row['minute_remaining']:,} this minute")
+            detail = ", ".join(left) or "not yet observed"
+            if row["available"]:
+                ok(f"{row['spec']}", f"#{row['rank'] + 1} · {detail}")
+            else:
+                when = limits.describe_reset(
+                    time.time() + row["resets_in"], row["estimated"])
+                warn(f"{row['spec']}", f"{row['reason']} — back {when}")
+
+    # --- 6. promises -------------------------------------------------------
     print(f"\n{BOLD}Features{OFF}")
     enforced = [k for k in modes_mod.MODES if contracts_mod.describe(k)]
     ok(f"{len(modes_mod.MODES)} modes",

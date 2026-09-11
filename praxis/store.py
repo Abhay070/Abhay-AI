@@ -65,6 +65,45 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 CREATE INDEX IF NOT EXISTS idx_memories_cat ON memories(category);
 
+-- What each backend has spent, and what it has left. Persisted because a
+-- daily quota does not reset just because the server restarted — an
+-- in-memory ledger would forget a six-hour cooldown on every reload and
+-- walk straight back into the wall.
+CREATE TABLE IF NOT EXISTS usage_events (
+    id              TEXT PRIMARY KEY,
+    at              REAL NOT NULL,
+    budget_key      TEXT NOT NULL,
+    backend         TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    prompt_tokens   INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    requests        INTEGER NOT NULL DEFAULT 1,
+    estimated       INTEGER NOT NULL DEFAULT 0,
+    outcome         TEXT NOT NULL DEFAULT 'ok',
+    conversation_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_usage_budget_at ON usage_events(budget_key, at);
+
+-- -1 in a `remaining` column means never observed; 0 means observed and
+-- empty. Collapsing those two would make the router refuse to try a backend
+-- it has simply never used.
+CREATE TABLE IF NOT EXISTS budget_state (
+    budget_key      TEXT PRIMARY KEY,
+    backend         TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    minute_limit    INTEGER NOT NULL DEFAULT 0,
+    minute_remaining INTEGER NOT NULL DEFAULT -1,
+    minute_reset_at REAL NOT NULL DEFAULT 0,
+    day_limit       INTEGER NOT NULL DEFAULT 0,
+    day_remaining   INTEGER NOT NULL DEFAULT -1,
+    day_reset_at    REAL NOT NULL DEFAULT 0,
+    cooldown_until  REAL NOT NULL DEFAULT 0,
+    cooldown_reason TEXT NOT NULL DEFAULT '',
+    reset_estimated INTEGER NOT NULL DEFAULT 0,
+    failures        INTEGER NOT NULL DEFAULT 0,
+    observed_at     REAL NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -409,6 +448,69 @@ class Store:
         with self.connect() as db:
             row = db.execute("SELECT * FROM files WHERE id = ?", (fid,)).fetchone()
         return dict(row) if row else None
+
+    # -- capacity ledger ---------------------------------------------------
+
+    def record_usage(self, budget_key: str, backend: str, model: str,
+                     prompt_tokens: int = 0, completion_tokens: int = 0,
+                     estimated: bool = False, outcome: str = "ok",
+                     conversation_id: str | None = None) -> None:
+        """One request's cost. Written once per turn, never per chunk."""
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO usage_events (id,at,budget_key,backend,model,"
+                "prompt_tokens,completion_tokens,requests,estimated,outcome,"
+                "conversation_id) VALUES (?,?,?,?,?,?,?,1,?,?,?)",
+                (_id(), now(), budget_key, backend, model, int(prompt_tokens),
+                 int(completion_tokens), 1 if estimated else 0, outcome,
+                 conversation_id))
+
+    def usage_totals(self, budget_key: str, since: float) -> dict:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT COUNT(*) AS requests, "
+                "COALESCE(SUM(prompt_tokens + completion_tokens),0) AS tokens "
+                "FROM usage_events WHERE budget_key = ? AND at >= ?",
+                (budget_key, since)).fetchone()
+        return {"requests": row["requests"], "tokens": row["tokens"]}
+
+    def get_budget(self, budget_key: str) -> dict | None:
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM budget_state WHERE budget_key = ?",
+                             (budget_key,)).fetchone()
+        return dict(row) if row else None
+
+    def all_budgets(self) -> list[dict]:
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM budget_state").fetchall()
+        return [dict(r) for r in rows]
+
+    def save_budget(self, budget_key: str, backend: str, model: str,
+                    **fields) -> None:
+        """Upsert a backend's standing. Unknown keys are ignored rather than
+        raising — a provider growing a new header must never break a turn."""
+        allowed = {"minute_limit", "minute_remaining", "minute_reset_at",
+                   "day_limit", "day_remaining", "day_reset_at",
+                   "cooldown_until", "cooldown_reason", "reset_estimated",
+                   "failures", "observed_at"}
+        data = {k: v for k, v in fields.items() if k in allowed}
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO budget_state (budget_key,backend,model) "
+                "VALUES (?,?,?) ON CONFLICT(budget_key) DO NOTHING",
+                (budget_key, backend, model))
+            if data:
+                sets = ", ".join(f"{k} = ?" for k in data)
+                db.execute(f"UPDATE budget_state SET {sets} WHERE budget_key = ?",
+                           (*data.values(), budget_key))
+
+    def clear_cooldowns(self) -> int:
+        with self.connect() as db:
+            n = db.execute("SELECT COUNT(*) c FROM budget_state "
+                           "WHERE cooldown_until > 0").fetchone()["c"]
+            db.execute("UPDATE budget_state SET cooldown_until = 0, "
+                       "cooldown_reason = '', failures = 0")
+        return n
 
     # -- settings ----------------------------------------------------------
 

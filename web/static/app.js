@@ -418,6 +418,14 @@ function messageNode(m, index) {
       escapeHtml(m.breach.broke.join(', ')) + '</span>';
     node.appendChild(n);
   }
+  if (m.meta && m.meta.switches && m.meta.switches.length) {
+    for (const sw of m.meta.switches) {
+      const n = el('div', 'switch-note');
+      n.innerHTML = '<span class="ic">⇄</span><span><b>' + escapeHtml(sw.from) +
+        '</b> ran out — <b>' + escapeHtml(sw.to) + '</b> finished this.</span>';
+      node.appendChild(n);
+    }
+  }
   if (m.council) node.appendChild(councilNode(m.council));
   if (m.cascade) node.appendChild(cascadeNode(m.cascade));
 
@@ -679,6 +687,24 @@ async function stream(payload) {
   }
 }
 
+// Show which backends handed the turn along. Rendered inside the bubble so it
+// travels with the answer — a note about who actually wrote this belongs next
+// to what they wrote, not in a toast that vanishes.
+function renderSwitches(assistant, node) {
+  if (!node || !assistant.switches || !assistant.switches.length) return;
+  node.querySelectorAll('.switch-note').forEach(n => n.remove());
+  const anchor = node.querySelector('.msg-body');
+  for (const s of assistant.switches) {
+    const n = el('div', 'switch-note');
+    const why = s.reason === 'day' ? 'ran out for the day'
+              : s.reason === 'minute' ? 'hit its per-minute limit'
+              : 'ran out of capacity';
+    n.innerHTML = '<span class="ic">⇄</span><span><b>' + escapeHtml(s.from) +
+      '</b> ' + why + ' — <b>' + escapeHtml(s.to) + '</b> finished this.</span>';
+    node.insertBefore(n, anchor);
+  }
+}
+
 // Re-render the council / cascade panel in place, above the streaming text.
 function renderCouncil(assistant, node) {
   if (!node) return;
@@ -869,6 +895,27 @@ function handleEvent(evt, assistant, body, toolBox, node) {
 
     case 'empty_answer':
       assistant.error = true;
+      break;
+
+    // A backend ran out of capacity and the turn moved to the next one. This
+    // is shown in the thread, not just as a toast: a silent swap that reports
+    // success is the failure this whole design refuses to make.
+    case 'provider_switch': {
+      assistant.switches = assistant.switches || [];
+      assistant.switches.push(d);
+      // Discard exactly what this round streamed; earlier rounds stand.
+      if (typeof d.keep_chars === 'number') {
+        assistant.content = assistant.content.slice(0, d.keep_chars);
+        body.innerHTML = renderMarkdown(assistant.content);
+      }
+      renderSwitches(assistant, node);
+      setActivity(assistant, 'Switching to ' + d.to + '…');
+      toast(d.from + ' is out of capacity — ' + d.to + ' is taking over');
+      break;
+    }
+
+    case 'truncated':
+      assistant.truncated = d;
       break;
 
     case 'error':

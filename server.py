@@ -244,6 +244,21 @@ async def export_conversation(cid: str) -> PlainTextResponse:
 
 # -- memory -----------------------------------------------------------------
 
+@app.get("/api/capacity")
+async def capacity() -> dict:
+    """What each backend in the pool has left, and when spent ones return."""
+    if not agent.router:
+        return {"enabled": False, "pool": []}
+    return {"enabled": True, "pool": agent.router.status()}
+
+
+@app.post("/api/capacity/clear")
+async def clear_cooldowns() -> dict:
+    """Forget every cooldown. For when a provider recovers early, or a bad
+    guess benched a backend that is actually fine."""
+    return {"cleared": store.clear_cooldowns()}
+
+
 @app.get("/api/memories")
 async def list_memories(category: str = Query(""), q: str = Query(""),
                         include_superseded: bool = Query(True)) -> list[dict]:
@@ -388,9 +403,26 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         store.add_message(cid, "user", req.message, meta)
 
     history = store.get_messages(cid)
-    provider, notes = await providers.resolve(
-        req.provider or settings.provider,
-        () if req.provider else settings.fallback_chain)
+
+    # Who answers. The router picks from the pool: best backend first, but a
+    # request arriving while that one is already busy goes to the next rather
+    # than queueing behind it — which is what lets several people be answered
+    # at once instead of one after another. A pinned ?provider= overrides the
+    # pool entirely, because the user asked for that model specifically.
+    provider, notes = None, []
+    if agent.router and not req.provider:
+        slot = agent.router.pick()
+        if slot is not None:
+            try:
+                provider = agent.router.build(slot)
+            except providers.ProviderError as e:
+                notes.append(f"{slot.spec}: {e}")
+                provider = None
+    if provider is None:
+        provider, resolved_notes = await providers.resolve(
+            req.provider or settings.provider,
+            () if req.provider else settings.fallback_chain)
+        notes.extend(resolved_notes)
 
     async def event_stream():
         # The conversation id must reach the client before anything else, or a
